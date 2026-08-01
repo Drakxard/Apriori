@@ -43,6 +43,13 @@
     detailClassDay: document.querySelector("#detailClassDay"),
     detailExamDate: document.querySelector("#detailExamDate"),
     detailColor: document.querySelector("#detailColor"),
+    colorButton: document.querySelector("#colorButton"),
+    colorPicker: document.querySelector("#colorPicker"),
+    colorHue: document.querySelector("#colorHue"),
+    colorSaturation: document.querySelector("#colorSaturation"),
+    colorLightness: document.querySelector("#colorLightness"),
+    colorHex: document.querySelector("#colorHex"),
+    colorInputError: document.querySelector("#colorInputError"),
     detailError: document.querySelector("#detailError"),
     calendarButton: document.querySelector("#calendarButton"),
     deleteButton: document.querySelector("#deleteButton"),
@@ -72,6 +79,7 @@
       subjects: [],
       ring: [],
       weightSignature: "",
+      dockSplitIndex: 0,
     };
   }
 
@@ -109,6 +117,9 @@
         subjects,
         ring,
         weightSignature: typeof saved.weightSignature === "string" ? saved.weightSignature : "",
+        dockSplitIndex: Number.isInteger(saved.dockSplitIndex)
+          ? Math.max(0, Math.min(saved.dockSplitIndex, subjects.length))
+          : Math.min(5, subjects.length),
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizedState));
       return normalizedState;
@@ -314,12 +325,14 @@
   function renderSubjectDock() {
     elements.subjectDockList.replaceChildren();
     if (state.subjects.length === 0) document.body.classList.remove("dock-visible");
-    for (const subject of state.subjects) {
+    for (const [index, subject] of state.subjects.entries()) {
       const card = document.createElement("button");
       card.type = "button";
       card.className = "subject-dock-card";
+      if (index === state.dockSplitIndex) card.classList.add("starts-right-group");
       card.draggable = true;
       card.dataset.subjectId = subject.id;
+      card.dataset.dockSide = index < state.dockSplitIndex ? "left" : "right";
       card.style.setProperty("--card-color", subject.color);
       card.textContent = Scheduler.acronym(subject.name);
       card.setAttribute("aria-label", `Ver detalles de ${subject.name}`);
@@ -372,19 +385,35 @@
     const sourceIndex = state.subjects.findIndex((subject) => subject.id === dockDraggedId);
     if (sourceIndex < 0) return;
 
-    const remainingCards = Array.from(
-      elements.subjectDockList.querySelectorAll(".subject-dock-card[data-subject-id]"),
-    ).filter((card) => card.dataset.subjectId !== dockDraggedId);
-    const nextCard = remainingCards.find((card) => {
-      const bounds = card.getBoundingClientRect();
-      return event.clientX < bounds.left + bounds.width / 2;
-    });
-
+    let splitIndex = Math.max(0, Math.min(state.dockSplitIndex, state.subjects.length));
+    const sourceWasLeft = sourceIndex < splitIndex;
+    const target = event.target.closest(".subject-dock-card[data-subject-id]");
+    const targetId = target?.dataset.subjectId === dockDraggedId
+      ? null
+      : target?.dataset.subjectId;
+    const placeAfter = target
+      ? event.clientX >= target.getBoundingClientRect().left + target.offsetWidth / 2
+      : false;
     const [moved] = state.subjects.splice(sourceIndex, 1);
-    const insertionIndex = nextCard
-      ? state.subjects.findIndex((subject) => subject.id === nextCard.dataset.subjectId)
-      : state.subjects.length;
+    if (sourceWasLeft) splitIndex -= 1;
+
+    let insertionIndex;
+    let destinationIsLeft;
+    const targetIndex = targetId
+      ? state.subjects.findIndex((subject) => subject.id === targetId)
+      : -1;
+    if (targetIndex >= 0) {
+      destinationIsLeft = targetIndex < splitIndex;
+      insertionIndex = targetIndex + (placeAfter ? 1 : 0);
+    } else {
+      const bounds = elements.subjectDockList.getBoundingClientRect();
+      destinationIsLeft = event.clientX < bounds.left + bounds.width / 2;
+      insertionIndex = destinationIsLeft ? splitIndex : state.subjects.length;
+    }
+
     state.subjects.splice(insertionIndex, 0, moved);
+    if (destinationIsLeft) splitIndex += 1;
+    state.dockSplitIndex = splitIndex;
     saveState();
     renderSubjectDock();
     finishDockDrag();
@@ -415,7 +444,10 @@
     elements.calendarButton.addEventListener("click", openDatePicker);
     elements.detailClassDay.addEventListener("change", saveSubjectDetails);
     elements.detailExamDate.addEventListener("change", saveSubjectDetails);
-    elements.detailColor.addEventListener("change", saveSubjectDetails);
+    elements.detailColor.addEventListener("change", commitColorPickerValue);
+    elements.colorButton.addEventListener("click", toggleColorPicker);
+    elements.colorPicker.addEventListener("input", handleColorPickerInput);
+    elements.colorHex.addEventListener("change", handleColorHexChange);
     elements.queue.addEventListener("click", handleCardClick);
     elements.queue.addEventListener("pointerdown", handlePointerDown);
     elements.queue.addEventListener("pointermove", handlePointerMove);
@@ -431,6 +463,7 @@
     elements.subjectDock.addEventListener("pointerleave", hideSubjectDock);
     document.addEventListener("pointermove", handleDockProximity);
     document.addEventListener("pointerleave", hideSubjectDock);
+    document.addEventListener("pointerdown", closeColorPickerOnOutsidePress);
     document.addEventListener("keydown", handleGlobalKeydown);
     document.addEventListener("visibilitychange", refreshAfterVisibilityChange);
 
@@ -441,6 +474,7 @@
       elements.addForm.reset();
     });
     elements.detailDialog.addEventListener("close", () => {
+      closeColorPicker();
       elements.detailError.textContent = "";
     });
   }
@@ -497,7 +531,10 @@
       color: nextColor(),
     };
     const priorHead = state.ring[0] || null;
+    const extendLeftGroup =
+      state.subjects.length < 5 && state.dockSplitIndex === state.subjects.length;
     state.subjects.push(subject);
+    if (extendLeftGroup) state.dockSplitIndex += 1;
     state.ring.push(subject.id);
     state.weightSignature = Scheduler.weightSignature(state.subjects);
 
@@ -551,8 +588,196 @@
     elements.detailClassDay.value = subject.classDay === null ? "" : String(subject.classDay);
     elements.detailExamDate.value = subject.examDate || "";
     elements.detailColor.value = subject.color;
+    updateColorButton(subject.color);
     elements.detailError.textContent = "";
     elements.detailDialog.showModal();
+  }
+
+  function toggleColorPicker() {
+    if (elements.colorPicker.hidden) openColorPicker();
+    else closeColorPicker();
+  }
+
+  function openColorPicker() {
+    syncColorPicker(elements.detailColor.value);
+    elements.colorPicker.hidden = false;
+    elements.colorButton.setAttribute("aria-expanded", "true");
+    requestAnimationFrame(() => elements.colorHue.focus());
+  }
+
+  function closeColorPicker(commit = true) {
+    if (elements.colorPicker.hidden) return;
+    if (commit) commitColorPickerValue();
+    elements.colorPicker.hidden = true;
+    elements.colorButton.setAttribute("aria-expanded", "false");
+  }
+
+  function closeColorPickerOnOutsidePress(event) {
+    if (
+      elements.colorPicker.hidden ||
+      elements.colorPicker.contains(event.target) ||
+      elements.colorButton.contains(event.target)
+    ) {
+      return;
+    }
+    closeColorPicker();
+  }
+
+  function handleColorPickerInput(event) {
+    if (event.target === elements.colorHex) {
+      const value = parseColorInput(elements.colorHex.value);
+      if (!value) return;
+      elements.detailColor.value = value;
+      updateColorButton(value);
+      syncColorSliders(value);
+      setColorInputValidity(true);
+      return;
+    }
+
+    if (
+      event.target !== elements.colorHue &&
+      event.target !== elements.colorSaturation &&
+      event.target !== elements.colorLightness
+    ) {
+      return;
+    }
+
+    const color = hslToHex(
+      Number(elements.colorHue.value),
+      Number(elements.colorSaturation.value),
+      Number(elements.colorLightness.value),
+    );
+    elements.detailColor.value = color;
+    elements.colorHex.value = color.toUpperCase();
+    setColorInputValidity(true);
+    updateColorButton(color);
+    updateColorSliderBackgrounds();
+  }
+
+  function handleColorHexChange() {
+    const value = parseColorInput(elements.colorHex.value);
+    if (!value) {
+      setColorInputValidity(false);
+      return;
+    }
+    elements.detailColor.value = value;
+    elements.colorHex.value = value.toUpperCase();
+    setColorInputValidity(true);
+    updateColorButton(value);
+    syncColorSliders(value);
+    commitColorPickerValue();
+  }
+
+  function commitColorPickerValue() {
+    const subject = subjectById(elements.detailId.value);
+    const color = parseColorInput(elements.detailColor.value);
+    if (!subject || !color || subject.color === color) return;
+    subject.color = color;
+    saveState();
+    render();
+  }
+
+  function syncColorPicker(color) {
+    const normalized = parseColorInput(color) || PALETTE[0];
+    elements.detailColor.value = normalized;
+    elements.colorHex.value = normalized.toUpperCase();
+    setColorInputValidity(true);
+    updateColorButton(normalized);
+    syncColorSliders(normalized);
+  }
+
+  function syncColorSliders(color) {
+    const { hue, saturation, lightness } = hexToHsl(color);
+    elements.colorHue.value = String(Math.round(hue));
+    elements.colorSaturation.value = String(Math.round(saturation));
+    elements.colorLightness.value = String(Math.round(lightness));
+    updateColorSliderBackgrounds();
+  }
+
+  function updateColorButton(color) {
+    elements.colorButton.style.setProperty("--selected-color", color);
+  }
+
+  function updateColorSliderBackgrounds() {
+    elements.colorPicker.style.setProperty("--picker-hue", elements.colorHue.value);
+    elements.colorPicker.style.setProperty(
+      "--picker-saturation",
+      `${elements.colorSaturation.value}%`,
+    );
+  }
+
+  function setColorInputValidity(valid) {
+    elements.colorHex.setAttribute("aria-invalid", valid ? "false" : "true");
+    elements.colorInputError.textContent = valid
+      ? ""
+      : "Usá #RRGGBB o R, G, B.";
+  }
+
+  function parseColorInput(value) {
+    const normalized = String(value || "").trim();
+    if (normalized.startsWith("#")) {
+      if (/^#[0-9a-f]{6}$/i.test(normalized)) return normalized.toLowerCase();
+      if (/^#[0-9a-f]{3}$/i.test(normalized)) {
+        return `#${normalized
+          .slice(1)
+          .split("")
+          .map((digit) => digit.repeat(2))
+          .join("")}`.toLowerCase();
+      }
+      return null;
+    }
+
+    if (!normalized.includes(",")) return null;
+    const channels = normalized.split(",").map((channel) => channel.trim());
+    if (
+      channels.length !== 3 ||
+      channels.some((channel) => !/^\d{1,3}$/.test(channel) || Number(channel) > 255)
+    ) {
+      return null;
+    }
+    return `#${channels
+      .map((channel) => Number(channel).toString(16).padStart(2, "0"))
+      .join("")}`;
+  }
+
+  function hexToHsl(color) {
+    const red = parseInt(color.slice(1, 3), 16) / 255;
+    const green = parseInt(color.slice(3, 5), 16) / 255;
+    const blue = parseInt(color.slice(5, 7), 16) / 255;
+    const maximum = Math.max(red, green, blue);
+    const minimum = Math.min(red, green, blue);
+    const lightness = (maximum + minimum) / 2;
+    const delta = maximum - minimum;
+    if (delta === 0) return { hue: 0, saturation: 0, lightness: lightness * 100 };
+
+    const saturation = delta / (1 - Math.abs(2 * lightness - 1));
+    let hue;
+    if (maximum === red) hue = 60 * (((green - blue) / delta) % 6);
+    else if (maximum === green) hue = 60 * ((blue - red) / delta + 2);
+    else hue = 60 * ((red - green) / delta + 4);
+    if (hue < 0) hue += 360;
+    return { hue, saturation: saturation * 100, lightness: lightness * 100 };
+  }
+
+  function hslToHex(hue, saturation, lightness) {
+    const normalizedSaturation = saturation / 100;
+    const normalizedLightness = lightness / 100;
+    const chroma = (1 - Math.abs(2 * normalizedLightness - 1)) * normalizedSaturation;
+    const section = hue / 60;
+    const intermediate = chroma * (1 - Math.abs((section % 2) - 1));
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    if (section < 1) [red, green] = [chroma, intermediate];
+    else if (section < 2) [red, green] = [intermediate, chroma];
+    else if (section < 3) [green, blue] = [chroma, intermediate];
+    else if (section < 4) [green, blue] = [intermediate, chroma];
+    else if (section < 5) [red, blue] = [intermediate, chroma];
+    else [red, blue] = [chroma, intermediate];
+    const match = normalizedLightness - chroma / 2;
+    return `#${[red, green, blue]
+      .map((component) => Math.round((component + match) * 255).toString(16).padStart(2, "0"))
+      .join("")}`;
   }
 
   function handleDetailNameKeydown(event) {
@@ -601,6 +826,10 @@
     if (!subject) return;
     if (!window.confirm(`¿Eliminar “${subject.name}” de la cola?`)) return;
 
+    const subjectIndex = state.subjects.findIndex((item) => item.id === subject.id);
+    if (subjectIndex >= 0 && subjectIndex < state.dockSplitIndex) {
+      state.dockSplitIndex -= 1;
+    }
     state.subjects = state.subjects.filter((item) => item.id !== subject.id);
     state.ring = state.ring.filter((id) => id !== subject.id);
     rebuildRing();
@@ -832,6 +1061,13 @@
 
   function handleGlobalKeydown(event) {
     if (!storageReady) return;
+    if (event.key === "Escape" && !elements.colorPicker.hidden) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeColorPicker();
+      elements.colorButton.focus();
+      return;
+    }
     if (event.key !== "+" || event.ctrlKey || event.metaKey || event.altKey) return;
     const target = event.target;
     const isTyping =

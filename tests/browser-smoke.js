@@ -403,8 +403,26 @@ async function main() {
     }));
     const cards = [...document.querySelectorAll('.subject-dock-card')];
     const bounds = cards.map((card) => card.getBoundingClientRect());
+    cards[5].dispatchEvent(new DragEvent('dragstart', { bubbles: true }));
+    cards[0].dispatchEvent(new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      clientX: cards[0].getBoundingClientRect().left
+    }));
+    const crossedCards = [...document.querySelectorAll('.subject-dock-card')];
+    const crossedLeftCount = crossedCards.filter((card) => card.dataset.dockSide === 'left').length;
+    crossedCards[0].dispatchEvent(new DragEvent('dragstart', { bubbles: true }));
+    crossedCards[6].dispatchEvent(new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      clientX: crossedCards[6].getBoundingClientRect().left
+    }));
+    const restoredCards = [...document.querySelectorAll('.subject-dock-card')];
     return {
       labels: cards.map((card) => card.textContent.trim()),
+      crossedLeftCount,
+      restoredLabels: restoredCards.map((card) => card.textContent.trim()),
+      restoredLeftCount: restoredCards.filter((card) => card.dataset.dockSide === 'left').length,
       leftGap: bounds[5].left - bounds[4].right,
       leftEdge: bounds[0].left,
       rightEdge: innerWidth - bounds.at(-1).right,
@@ -413,6 +431,9 @@ async function main() {
   })()`);
   if (
     JSON.stringify(dockGroups.labels.slice(5)) !== JSON.stringify(["C3", "PE", "F1"]) ||
+    dockGroups.crossedLeftCount !== 6 ||
+    JSON.stringify(dockGroups.restoredLabels) !== JSON.stringify(dockGroups.labels) ||
+    dockGroups.restoredLeftCount !== 5 ||
     dockGroups.leftGap < 100 ||
     dockGroups.leftEdge !== 12 ||
     dockGroups.rightEdge !== 12 ||
@@ -433,9 +454,30 @@ async function main() {
     const date = document.querySelector('#detailExamDate');
     date.value = '2026-08-15';
     date.dispatchEvent(new Event('change', { bubbles: true }));
-    const color = document.querySelector('#detailColor');
-    color.value = '#e45b9d';
-    color.dispatchEvent(new Event('change', { bubbles: true }));
+    const colorField = document.querySelector('.color-field');
+    const colorButton = document.querySelector('#colorButton');
+    const colorPicker = document.querySelector('#colorPicker');
+    colorField.click();
+    const onlyButtonOpens = colorPicker.hidden;
+    colorButton.click();
+    const openedFromButton = !colorPicker.hidden;
+    document.dispatchEvent(new Event('visibilitychange'));
+    const stayedOpen = !colorPicker.hidden;
+    const colorText = document.querySelector('#colorHex');
+    colorText.value = '253, 199, 69';
+    colorText.dispatchEvent(new Event('input', { bubbles: true }));
+    colorText.dispatchEvent(new Event('change', { bubbles: true }));
+    const detectedRgb = JSON.parse(localStorage.getItem('study-ticket-queue:v1')).subjects[0].color;
+    colorText.value = '253 199 69';
+    colorText.dispatchEvent(new Event('change', { bubbles: true }));
+    const rejectedInvalidFormat =
+      colorText.getAttribute('aria-invalid') === 'true' &&
+      JSON.parse(localStorage.getItem('study-ticket-queue:v1')).subjects[0].color === detectedRgb;
+    colorText.value = '#e45b9d';
+    colorText.dispatchEvent(new Event('input', { bubbles: true }));
+    colorText.dispatchEvent(new Event('change', { bubbles: true }));
+    day.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    const closedOutside = colorPicker.hidden;
     const saved = JSON.parse(localStorage.getItem('study-ticket-queue:v1')).subjects[0];
     const panelStyle = getComputedStyle(document.querySelector('#detailDialog'));
     return {
@@ -444,11 +486,17 @@ async function main() {
       classDay: saved.classDay,
       examDate: saved.examDate,
       color: saved.color,
+      onlyButtonOpens,
+      openedFromButton,
+      stayedOpen,
+      closedOutside,
+      detectedRgb,
+      rejectedInvalidFormat,
       colorControl: {
-        width: getComputedStyle(color).width,
-        height: getComputedStyle(color).height,
-        border: getComputedStyle(color).borderTopWidth,
-        radius: getComputedStyle(color).borderRadius
+        width: getComputedStyle(colorButton).width,
+        height: getComputedStyle(colorButton).height,
+        border: getComputedStyle(colorButton).borderTopWidth,
+        radius: getComputedStyle(colorButton).borderRadius
       },
       border: panelStyle.borderTopWidth,
       radius: panelStyle.borderRadius,
@@ -461,6 +509,12 @@ async function main() {
     detail.classDay !== 3 ||
     detail.examDate !== "2026-08-15" ||
     detail.color !== "#e45b9d" ||
+    !detail.onlyButtonOpens ||
+    !detail.openedFromButton ||
+    !detail.stayedOpen ||
+    !detail.closedOutside ||
+    detail.detectedRgb !== "#fdc745" ||
+    !detail.rejectedInvalidFormat ||
     detail.colorControl.width !== "42px" ||
     detail.colorControl.height !== "42px" ||
     detail.colorControl.border !== "4px" ||
