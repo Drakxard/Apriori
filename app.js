@@ -1,0 +1,756 @@
+(function startApp() {
+  "use strict";
+
+  const Scheduler = window.StudyScheduler;
+  const folderStorage = window.AprioriFolderStorage.createFolderStorage();
+  const STORAGE_KEY = "study-ticket-queue:v1";
+  const STATE_VERSION = 1;
+  const DRAG_THRESHOLD = 64;
+  const CLICK_THRESHOLD = 6;
+  const HOLD_DELAY = 150;
+  const HOLD_LIFT = 8;
+  const ANIMATION_MS = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 270;
+  const PALETTE = [
+    "#13a8e0",
+    "#b5eb16",
+    "#bf835f",
+    "#c5bee1",
+    "#ffca1a",
+  ];
+  const LEGACY_PALETTE = [
+    "#20a6d7",
+    "#b6eb20",
+    "#c3845e",
+    "#c7c0e4",
+    "#ffc928",
+    "#ef8fa1",
+    "#71c9b3",
+    "#f2a95d",
+  ];
+
+  const elements = {
+    queue: document.querySelector("#queue"),
+    addDialog: document.querySelector("#addDialog"),
+    addForm: document.querySelector("#addForm"),
+    newSubjectName: document.querySelector("#newSubjectName"),
+    addError: document.querySelector("#addError"),
+    detailDialog: document.querySelector("#detailDialog"),
+    detailForm: document.querySelector("#detailForm"),
+    detailId: document.querySelector("#detailId"),
+    detailName: document.querySelector("#detailName"),
+    detailClassDay: document.querySelector("#detailClassDay"),
+    detailExamDate: document.querySelector("#detailExamDate"),
+    detailError: document.querySelector("#detailError"),
+    calendarButton: document.querySelector("#calendarButton"),
+    deleteButton: document.querySelector("#deleteButton"),
+    storageDialog: document.querySelector("#storageDialog"),
+    storageMessage: document.querySelector("#storageMessage"),
+    storageError: document.querySelector("#storageError"),
+    storagePrimaryButton: document.querySelector("#storagePrimaryButton"),
+    storageSecondaryButton: document.querySelector("#storageSecondaryButton"),
+  };
+
+  let state = loadState();
+  let storageReady = false;
+  let storageGateMode = "select";
+  let drag = null;
+  let isAnimating = false;
+  let suppressClick = false;
+  let dayRefreshTimer = null;
+
+  bindEvents();
+  bootstrapStorage();
+
+  function emptyState() {
+    return {
+      version: STATE_VERSION,
+      subjects: [],
+      ring: [],
+      weightSignature: "",
+    };
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return emptyState();
+      return normalizeState(JSON.parse(raw));
+    } catch {
+      return emptyState();
+    }
+  }
+
+  function normalizeState(saved) {
+    if (!saved || saved.version !== STATE_VERSION || !Array.isArray(saved.subjects)) {
+      return emptyState();
+    }
+
+    try {
+      const ids = new Set();
+      const subjects = saved.subjects
+        .map(normalizeSubject)
+        .filter((subject) => {
+          if (!subject || ids.has(subject.id)) return false;
+          ids.add(subject.id);
+          return true;
+        });
+      const validIds = new Set(subjects.map((subject) => subject.id));
+      const ring = Array.isArray(saved.ring)
+        ? saved.ring.filter((id) => typeof id === "string" && validIds.has(id))
+        : [];
+
+      const normalizedState = {
+        version: STATE_VERSION,
+        subjects,
+        ring,
+        weightSignature: typeof saved.weightSignature === "string" ? saved.weightSignature : "",
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizedState));
+      return normalizedState;
+    } catch {
+      return emptyState();
+    }
+  }
+
+  async function bootstrapStorage() {
+    const result = await folderStorage.initialize(state);
+    await applyStorageResult(result);
+  }
+
+  async function applyStorageResult(result) {
+    if (!result || result.status === "cancelled") return;
+    if (result.status !== "ready") {
+      storageReady = false;
+      showStorageGate(result);
+      return;
+    }
+
+    state = normalizeState(result.state);
+    storageReady = true;
+    document.body.classList.remove("storage-blocked");
+    if (elements.storageDialog.open) elements.storageDialog.close();
+    ensureFreshRing();
+    render();
+    saveState();
+    scheduleDayRefresh();
+  }
+
+  function showStorageGate(result) {
+    document.body.classList.add("storage-blocked");
+    elements.storageError.textContent = "";
+    elements.storagePrimaryButton.hidden = false;
+    elements.storageSecondaryButton.hidden = true;
+
+    if (result.status === "needs-selection") {
+      storageGateMode = "select";
+      elements.storageMessage.textContent = "Elegí una carpeta para guardar la cola.";
+      elements.storagePrimaryButton.textContent = "Elegir carpeta";
+    } else if (result.status === "needs-permission") {
+      storageGateMode = "authorize";
+      const folder = result.directoryName ? ` “${result.directoryName}”` : "";
+      elements.storageMessage.textContent = `La carpeta${folder} necesita acceso.`;
+      elements.storagePrimaryButton.textContent = "Dar acceso";
+      elements.storageSecondaryButton.hidden = false;
+    } else if (result.status === "invalid-file") {
+      storageGateMode = "authorize";
+      elements.storageMessage.textContent = "No se pudo leer apriori.json.";
+      elements.storageError.textContent = "El archivo no será reemplazado. Corregilo y reintentá, o elegí otra carpeta.";
+      elements.storagePrimaryButton.textContent = "Reintentar";
+      elements.storageSecondaryButton.hidden = false;
+    } else if (result.status === "unsupported") {
+      storageGateMode = "unsupported";
+      elements.storageMessage.textContent = "Este navegador no permite guardar directamente en una carpeta.";
+      elements.storageError.textContent = "Abrí la app con una versión reciente de Edge o Chrome.";
+      elements.storagePrimaryButton.hidden = true;
+    } else {
+      storageGateMode = result.directoryName ? "authorize" : "retry";
+      elements.storageMessage.textContent = "No se pudo acceder a la carpeta.";
+      elements.storageError.textContent = result.message || "Reintentá el acceso o elegí otra carpeta.";
+      elements.storagePrimaryButton.textContent = "Reintentar";
+      elements.storageSecondaryButton.hidden = !result.directoryName;
+    }
+
+    setStorageBusy(false);
+    if (!elements.storageDialog.open) elements.storageDialog.showModal();
+  }
+
+  function setStorageBusy(busy) {
+    elements.storagePrimaryButton.disabled = busy;
+    elements.storageSecondaryButton.disabled = busy;
+  }
+
+  async function runStorageAction(action) {
+    setStorageBusy(true);
+    elements.storageError.textContent = "";
+    let result;
+    if (action === "select") result = await folderStorage.selectDirectory(state);
+    else if (action === "retry") result = await folderStorage.initialize(state);
+    else result = await folderStorage.authorize(state);
+    setStorageBusy(false);
+    await applyStorageResult(result);
+  }
+
+  function normalizeSubject(subject, index) {
+    if (!subject || typeof subject !== "object") return null;
+    const name = normalizeName(subject.name);
+    if (!name) return null;
+
+    const createdAt = new Date(subject.createdAt);
+    return {
+      id: typeof subject.id === "string" && subject.id ? subject.id : createId(),
+      name,
+      classDay:
+        Number.isInteger(subject.classDay) && subject.classDay >= 0 && subject.classDay <= 6
+          ? subject.classDay
+          : null,
+      examDate: Scheduler.parseLocalDate(subject.examDate) ? subject.examDate : null,
+      createdAt: Number.isNaN(createdAt.getTime()) ? new Date().toISOString() : createdAt.toISOString(),
+      color: normalizeColor(subject.color, index),
+    };
+  }
+
+  function normalizeColor(color, index) {
+    const normalized = typeof color === "string" ? color.toLowerCase() : "";
+    const currentIndex = PALETTE.findIndex((item) => item.toLowerCase() === normalized);
+    if (currentIndex >= 0) return PALETTE[currentIndex];
+    const legacyIndex = LEGACY_PALETTE.findIndex((item) => item.toLowerCase() === normalized);
+    if (legacyIndex >= 0) return PALETTE[legacyIndex % PALETTE.length];
+    return PALETTE[index % PALETTE.length];
+  }
+
+  function saveState() {
+    if (!storageReady) return;
+    folderStorage.save(state).catch((error) => {
+      if (!storageReady) return;
+      storageReady = false;
+      showStorageGate({
+        status: "storage-error",
+        directoryName: folderStorage.directoryName,
+        message: error?.message || "No se pudo escribir apriori.json.",
+      });
+    });
+  }
+
+  function uniqueOrder(ids) {
+    return ids.filter((id, index) => ids.indexOf(id) === index);
+  }
+
+  function ringMatchesWeights(ring, subjects) {
+    if (!subjects.length) return ring.length === 0;
+    const desired = new Map(
+      subjects.map((subject) => [subject.id, Scheduler.calculateWeight(subject).tickets]),
+    );
+    const actual = new Map();
+    for (const id of ring) actual.set(id, (actual.get(id) || 0) + 1);
+    if (actual.size !== desired.size) return false;
+    return Array.from(desired).every(([id, count]) => actual.get(id) === count);
+  }
+
+  function ensureFreshRing(force = false) {
+    const signature = Scheduler.weightSignature(state.subjects);
+    const shouldRebuild =
+      force ||
+      signature !== state.weightSignature ||
+      !ringMatchesWeights(state.ring, state.subjects);
+
+    if (!shouldRebuild) return false;
+
+    const preferredHead = state.ring[0] || state.subjects[0]?.id || null;
+    state.ring = Scheduler.buildRing(state.subjects, new Date(), {
+      preferredHead,
+      preferredOrder: uniqueOrder(state.ring),
+    });
+    state.weightSignature = signature;
+    saveState();
+    return true;
+  }
+
+  function rebuildRing() {
+    state.weightSignature = "";
+    ensureFreshRing(true);
+  }
+
+  function render() {
+    ensureFreshRing();
+    elements.queue.replaceChildren();
+
+    if (!state.ring.length) return;
+
+    const subjectMap = new Map(state.subjects.map((subject) => [subject.id, subject]));
+
+    for (let index = 0; index < 5; index += 1) {
+      const id = state.ring[index % state.ring.length];
+      const subject = subjectMap.get(id);
+      if (!subject) continue;
+
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "queue-card";
+      card.dataset.position = String(index);
+      card.dataset.subjectId = subject.id;
+      card.style.setProperty("--card-color", subject.color);
+      card.setAttribute(
+        "aria-label",
+        `${subject.name}, posición ${index + 1} de 5`,
+      );
+
+      const label = document.createElement("span");
+      label.className = "card-label";
+      label.textContent = Scheduler.acronym(subject.name);
+      card.append(label);
+
+      elements.queue.append(card);
+    }
+  }
+
+  function bindEvents() {
+    elements.storagePrimaryButton.addEventListener("click", () => runStorageAction(storageGateMode));
+    elements.storageSecondaryButton.addEventListener("click", () => runStorageAction("select"));
+    elements.storageDialog.addEventListener("cancel", (event) => event.preventDefault());
+    elements.addForm.addEventListener("submit", addSubject);
+    elements.newSubjectName.addEventListener("keydown", handleAddKeydown);
+    elements.detailForm.addEventListener("submit", saveSubjectDetails);
+    elements.detailName.addEventListener("blur", saveSubjectDetails);
+    elements.detailName.addEventListener("keydown", handleDetailNameKeydown);
+    elements.deleteButton.addEventListener("click", deleteSelectedSubject);
+    elements.calendarButton.addEventListener("click", openDatePicker);
+    elements.detailClassDay.addEventListener("change", saveSubjectDetails);
+    elements.detailExamDate.addEventListener("change", saveSubjectDetails);
+    elements.queue.addEventListener("click", handleCardClick);
+    elements.queue.addEventListener("pointerdown", handlePointerDown);
+    elements.queue.addEventListener("pointermove", handlePointerMove);
+    elements.queue.addEventListener("pointerup", handlePointerUp);
+    elements.queue.addEventListener("pointercancel", cancelDrag);
+    elements.queue.addEventListener("keydown", handleQueueKeydown);
+    document.addEventListener("keydown", handleGlobalKeydown);
+    document.addEventListener("visibilitychange", refreshAfterVisibilityChange);
+
+    elements.addDialog.addEventListener("click", closeOnBackdrop);
+    elements.detailDialog.addEventListener("click", closeOnBackdrop);
+    elements.addDialog.addEventListener("close", () => {
+      elements.addError.textContent = "";
+      elements.addForm.reset();
+    });
+    elements.detailDialog.addEventListener("close", () => {
+      elements.detailError.textContent = "";
+    });
+  }
+
+  function closeOnBackdrop(event) {
+    if (event.target === event.currentTarget) event.currentTarget.close();
+  }
+
+  function openAddDialog() {
+    if (elements.addDialog.open || elements.detailDialog.open) return;
+    elements.addError.textContent = "";
+    elements.addDialog.showModal();
+    requestAnimationFrame(() => elements.newSubjectName.focus());
+  }
+
+  function handleAddKeydown(event) {
+    if (event.key !== "Enter" || event.isComposing) return;
+    event.preventDefault();
+    elements.addForm.requestSubmit();
+  }
+
+  function normalizeName(name) {
+    return String(name || "").trim().replace(/\s+/g, " ");
+  }
+
+  function isDuplicateName(name, ignoredId = null) {
+    const target = name.toLocaleLowerCase("es");
+    return state.subjects.some(
+      (subject) =>
+        subject.id !== ignoredId && subject.name.toLocaleLowerCase("es") === target,
+    );
+  }
+
+  function addSubject(event) {
+    event.preventDefault();
+    const name = normalizeName(elements.newSubjectName.value);
+    if (!name) {
+      elements.addError.textContent = "Escribí un nombre para continuar.";
+      elements.newSubjectName.focus();
+      return;
+    }
+    if (isDuplicateName(name)) {
+      elements.addError.textContent = "Esa materia ya está en la cola.";
+      elements.newSubjectName.select();
+      return;
+    }
+
+    const subject = {
+      id: createId(),
+      name,
+      classDay: null,
+      examDate: null,
+      createdAt: new Date().toISOString(),
+      color: nextColor(),
+    };
+    const priorHead = state.ring[0] || null;
+    state.subjects.push(subject);
+    state.ring.push(subject.id);
+    state.weightSignature = Scheduler.weightSignature(state.subjects);
+
+    if (!ringMatchesWeights(state.ring, state.subjects)) {
+      state.ring = Scheduler.buildRing(state.subjects, new Date(), {
+        preferredHead: priorHead,
+        preferredOrder: uniqueOrder(state.ring),
+      });
+    }
+
+    // A newly created base ticket should visibly enter at the bottom while the old head stays first.
+    if (priorHead && state.ring[0] === priorHead) {
+      const newIndex = state.ring.indexOf(subject.id);
+      if (newIndex >= 0 && newIndex !== state.ring.length - 1) {
+        state.ring.splice(newIndex, 1);
+        state.ring.push(subject.id);
+      }
+    }
+
+    saveState();
+    elements.addDialog.close();
+    render();
+  }
+
+  function createId() {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    return `subject-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function nextColor() {
+    const usage = new Map(PALETTE.map((color) => [color, 0]));
+    state.subjects.forEach((subject) => usage.set(subject.color, (usage.get(subject.color) || 0) + 1));
+    return PALETTE.slice().sort((left, right) => usage.get(left) - usage.get(right))[0];
+  }
+
+  function subjectById(id) {
+    return state.subjects.find((subject) => subject.id === id) || null;
+  }
+
+  function handleCardClick(event) {
+    const card = event.target.closest(".queue-card[data-subject-id]");
+    if (!card || suppressClick || isAnimating) return;
+    openDetails(card.dataset.subjectId);
+  }
+
+  function openDetails(id) {
+    const subject = subjectById(id);
+    if (!subject || elements.detailDialog.open) return;
+    elements.detailId.value = subject.id;
+    elements.detailName.value = subject.name;
+    elements.detailClassDay.value = subject.classDay === null ? "" : String(subject.classDay);
+    elements.detailExamDate.value = subject.examDate || "";
+    elements.detailError.textContent = "";
+    elements.detailDialog.showModal();
+  }
+
+  function handleDetailNameKeydown(event) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (saveSubjectDetails()) elements.detailName.blur();
+  }
+
+  function saveSubjectDetails(event) {
+    event?.preventDefault();
+    const subject = subjectById(elements.detailId.value);
+    if (!subject) {
+      elements.detailDialog.close();
+      return false;
+    }
+
+    const name = normalizeName(elements.detailName.value);
+    if (!name) {
+      elements.detailError.textContent = "El nombre no puede quedar vacío.";
+      elements.detailName.focus();
+      return false;
+    }
+    if (isDuplicateName(name, subject.id)) {
+      elements.detailError.textContent = "Ya existe otra materia con ese nombre.";
+      elements.detailName.select();
+      return false;
+    }
+
+    const nextClassDay = elements.detailClassDay.value === "" ? null : Number(elements.detailClassDay.value);
+    const nextExamDate = elements.detailExamDate.value || null;
+    const scheduleChanged = subject.classDay !== nextClassDay || subject.examDate !== nextExamDate;
+    subject.name = name;
+    subject.classDay = nextClassDay;
+    subject.examDate = nextExamDate;
+    elements.detailError.textContent = "";
+    if (scheduleChanged) rebuildRing();
+    else saveState();
+    render();
+    return true;
+  }
+
+  function deleteSelectedSubject() {
+    const subject = subjectById(elements.detailId.value);
+    if (!subject) return;
+    if (!window.confirm(`¿Eliminar “${subject.name}” de la cola?`)) return;
+
+    state.subjects = state.subjects.filter((item) => item.id !== subject.id);
+    state.ring = state.ring.filter((id) => id !== subject.id);
+    rebuildRing();
+    elements.detailDialog.close();
+    render();
+  }
+
+  function openDatePicker() {
+    try {
+      if (typeof elements.detailExamDate.showPicker === "function") {
+        elements.detailExamDate.showPicker();
+      } else {
+        elements.detailExamDate.focus();
+        elements.detailExamDate.click();
+      }
+    } catch {
+      elements.detailExamDate.focus();
+    }
+  }
+
+  function handlePointerDown(event) {
+    const card = event.target.closest('.queue-card[data-position="0"]');
+    if (!card || event.button !== 0 || isAnimating) return;
+    drag = {
+      pointerId: event.pointerId,
+      card,
+      startX: event.clientX,
+      startY: event.clientY,
+      currentX: event.clientX,
+      currentY: event.clientY,
+      deltaX: 0,
+      deltaY: 0,
+      moved: false,
+      held: false,
+      samples: [{ x: event.clientX, y: event.clientY, time: performance.now() }],
+      holdTimer: window.setTimeout(() => activateHold(event.pointerId), HOLD_DELAY),
+    };
+    card.setPointerCapture(event.pointerId);
+  }
+
+  function activateHold(pointerId) {
+    if (!drag || drag.pointerId !== pointerId || drag.held) return;
+    drag.held = true;
+    suppressClick = true;
+    drag.card.classList.add("is-held");
+  }
+
+  function handlePointerMove(event) {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    const rawDeltaY = event.clientY - drag.startY;
+    drag.currentX = event.clientX;
+    drag.currentY = event.clientY;
+    drag.deltaX = deltaX;
+    drag.deltaY = rawDeltaY;
+    recordPointerSample(drag, event.clientX, event.clientY);
+    if (!drag.moved && Math.hypot(deltaX, rawDeltaY) > CLICK_THRESHOLD) {
+      drag.moved = true;
+      activateHold(event.pointerId);
+      drag.card.classList.add("is-dragging");
+    }
+    if (!drag.moved) return;
+
+    const progress = Math.min(1, Math.hypot(drag.deltaX, drag.deltaY) / DRAG_THRESHOLD);
+    const tilt = Math.max(-3, Math.min(3, deltaX / 45));
+    drag.card.style.transform = `translate(${drag.deltaX}px, ${drag.deltaY - HOLD_LIFT}px) rotate(${tilt}deg) scale(1.012)`;
+    drag.card.style.opacity = String(1 - progress * 0.12);
+  }
+
+  function recordPointerSample(activeDrag, x, y) {
+    const now = performance.now();
+    activeDrag.samples.push({ x, y, time: now });
+    activeDrag.samples = activeDrag.samples.filter((sample) => now - sample.time <= 120);
+  }
+
+  function releaseVelocity(activeDrag, x, y) {
+    recordPointerSample(activeDrag, x, y);
+    const latest = activeDrag.samples.at(-1);
+    const earliest = activeDrag.samples.find((sample) => latest.time - sample.time >= 24) || activeDrag.samples[0];
+    const elapsed = Math.max(16, latest.time - earliest.time);
+    return {
+      x: (latest.x - earliest.x) / elapsed,
+      y: (latest.y - earliest.y) / elapsed,
+    };
+  }
+
+  function handlePointerUp(event) {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const currentDrag = drag;
+    drag = null;
+    window.clearTimeout(currentDrag.holdTimer);
+    currentDrag.deltaX = event.clientX - currentDrag.startX;
+    currentDrag.deltaY = event.clientY - currentDrag.startY;
+    const velocity = releaseVelocity(currentDrag, event.clientX, event.clientY);
+
+    if (currentDrag.card.hasPointerCapture(event.pointerId)) {
+      currentDrag.card.releasePointerCapture(event.pointerId);
+    }
+    currentDrag.card.classList.remove("is-dragging", "is-held");
+
+    const upwardThrow = currentDrag.deltaY <= -DRAG_THRESHOLD || velocity.y <= -0.45;
+    const sidewaysThrow =
+      Math.abs(currentDrag.deltaX) >= 24 && Math.abs(velocity.x) >= 0.65 && velocity.y <= 0.2;
+
+    if (currentDrag.moved && (upwardThrow || sidewaysThrow)) {
+      flingQueue(currentDrag, velocity);
+    } else if (currentDrag.moved || currentDrag.held) {
+      returnCard(
+        currentDrag.card,
+        currentDrag.deltaX,
+        currentDrag.deltaY - HOLD_LIFT,
+        Math.max(-3, Math.min(3, currentDrag.deltaX / 45)),
+      );
+    }
+
+    window.setTimeout(() => {
+      suppressClick = false;
+    }, 0);
+  }
+
+  function cancelDrag(event) {
+    if (!drag || (event.pointerId !== undefined && drag.pointerId !== event.pointerId)) return;
+    const currentDrag = drag;
+    drag = null;
+    window.clearTimeout(currentDrag.holdTimer);
+    currentDrag.card.classList.remove("is-dragging", "is-held");
+    returnCard(
+      currentDrag.card,
+      currentDrag.deltaX,
+      currentDrag.deltaY - (currentDrag.held ? HOLD_LIFT : 0),
+      Math.max(-3, Math.min(3, currentDrag.deltaX / 45)),
+    );
+    window.setTimeout(() => {
+      suppressClick = false;
+    }, 0);
+  }
+
+  function returnCard(card, fromX, fromY, rotation = 0) {
+    card.style.removeProperty("transform");
+    card.style.removeProperty("opacity");
+    card.style.setProperty("--return-x", `${fromX}px`);
+    card.style.setProperty("--return-y", `${fromY}px`);
+    card.style.setProperty("--return-rotation", `${rotation}deg`);
+    card.classList.add("is-returning");
+    window.setTimeout(() => card.classList.remove("is-returning"), 290);
+  }
+
+  function flingQueue(activeDrag, velocity) {
+    if (isAnimating || state.ring.length === 0) return;
+    isAnimating = true;
+    if (ANIMATION_MS === 0) {
+      completeAdvance();
+      return;
+    }
+
+    const card = activeDrag.card;
+    const speed = Math.hypot(velocity.x, velocity.y);
+    let directionX = speed > 0.18 ? velocity.x / speed : activeDrag.deltaX;
+    let directionY = speed > 0.18 ? velocity.y / speed : activeDrag.deltaY;
+    const directionLength = Math.hypot(directionX, directionY) || 1;
+    directionX /= directionLength;
+    directionY /= directionLength;
+    const travel = Math.max(window.innerWidth, window.innerHeight) * 1.35;
+    const duration = Math.round(Math.max(280, Math.min(480, 440 - speed * 90)));
+    const startX = activeDrag.deltaX;
+    const startY = activeDrag.deltaY - HOLD_LIFT;
+    const endX = startX + directionX * travel;
+    const endY = startY + directionY * travel + 36;
+    const initialRotation = Math.max(-3, Math.min(3, activeDrag.deltaX / 45));
+    const rotationDirection = Math.sign(velocity.x || activeDrag.deltaX || 1);
+
+    elements.queue.classList.add("is-flinging");
+    const animation = card.animate(
+      [
+        {
+          transform: `translate(${startX}px, ${startY}px) rotate(${initialRotation}deg) scale(1.012)`,
+          opacity: 0.88,
+        },
+        {
+          transform: `translate(${startX + directionX * travel * 0.58}px, ${startY + directionY * travel * 0.58 + 10}px) rotate(${initialRotation + rotationDirection * 7}deg) scale(1.012)`,
+          opacity: 0.72,
+          offset: 0.58,
+        },
+        {
+          transform: `translate(${endX}px, ${endY}px) rotate(${initialRotation + rotationDirection * 14}deg) scale(1.012)`,
+          opacity: 0,
+        },
+      ],
+      {
+        duration,
+        easing: "cubic-bezier(0.16, 0.72, 0.25, 1)",
+        fill: "forwards",
+      },
+    );
+
+    animation.addEventListener("finish", completeAdvance, { once: true });
+    animation.addEventListener("cancel", completeAdvance, { once: true });
+  }
+
+  function completeAdvance() {
+    if (!isAnimating) return;
+    if (state.ring.length) state.ring.push(state.ring.shift());
+    saveState();
+    elements.queue.classList.remove("is-advancing", "is-flinging");
+    isAnimating = false;
+    render();
+    elements.queue.querySelector('.queue-card[data-position="0"]')?.focus({ preventScroll: true });
+  }
+
+  function advanceQueue() {
+    if (isAnimating || state.ring.length === 0) return;
+    isAnimating = true;
+    const headCard = elements.queue.querySelector('.queue-card[data-position="0"]');
+    headCard?.style.removeProperty("transform");
+    headCard?.style.removeProperty("opacity");
+    elements.queue.classList.add("is-advancing");
+
+    window.setTimeout(() => {
+      completeAdvance();
+    }, ANIMATION_MS);
+  }
+
+  function handleQueueKeydown(event) {
+    const card = event.target.closest('.queue-card[data-position="0"]');
+    if (!card || event.key !== "ArrowUp") return;
+    event.preventDefault();
+    advanceQueue();
+  }
+
+  function handleGlobalKeydown(event) {
+    if (!storageReady) return;
+    if (event.key !== "+" || event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.target;
+    const isTyping =
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLSelectElement ||
+      target instanceof HTMLTextAreaElement ||
+      target?.isContentEditable;
+    if (isTyping || elements.addDialog.open || elements.detailDialog.open) return;
+    event.preventDefault();
+    openAddDialog();
+  }
+
+  function refreshAfterVisibilityChange() {
+    if (document.visibilityState !== "visible") return;
+    if (!storageReady) {
+      folderStorage.initialize(state).then(applyStorageResult);
+      return;
+    }
+    if (ensureFreshRing()) render();
+    scheduleDayRefresh();
+  }
+
+  function scheduleDayRefresh() {
+    window.clearTimeout(dayRefreshTimer);
+    const now = new Date();
+    const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 50);
+    dayRefreshTimer = window.setTimeout(() => {
+      ensureFreshRing(true);
+      render();
+      scheduleDayRefresh();
+    }, nextDay.getTime() - now.getTime());
+  }
+
+})();

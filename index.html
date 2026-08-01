@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta
+      name="description"
+      content="Una cola circular y espaciada para organizar tus materias."
+    />
+    <title>Cola de estudio</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="storage-blocked">
+    <main class="app-shell">
+      <section class="queue-section" aria-label="Cola circular de materias">
+        <div
+          class="queue"
+          id="queue"
+          aria-live="polite"
+          aria-label="Cola circular de materias"
+        ></div>
+      </section>
+    </main>
+
+    <dialog class="storage-panel" id="storageDialog" aria-labelledby="storageMessage">
+      <div class="storage-content">
+        <p id="storageMessage">Preparando la carpeta…</p>
+        <p class="storage-error" id="storageError" role="alert"></p>
+        <div class="storage-actions">
+          <button class="storage-primary" id="storagePrimaryButton" type="button">
+            Elegir carpeta
+          </button>
+          <button class="storage-secondary" id="storageSecondaryButton" type="button" hidden>
+            Elegir otra carpeta
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="quick-add" id="addDialog" aria-labelledby="addPrompt">
+      <form id="addForm" method="dialog" novalidate>
+        <label class="sr-only" id="addPrompt" for="newSubjectName">
+          Nombre de la materia
+        </label>
+        <input
+          id="newSubjectName"
+          name="name"
+          type="text"
+          maxlength="60"
+          aria-label="Nombre de la materia"
+          autocomplete="off"
+          required
+        />
+        <p class="field-error add-error" id="addError" role="alert"></p>
+      </form>
+    </dialog>
+
+    <dialog class="detail-panel" id="detailDialog" aria-label="Detalle de materia">
+      <form id="detailForm" method="dialog" novalidate>
+        <input id="detailId" name="id" type="hidden" />
+
+        <label class="field name-field">
+          <span>Nombre</span>
+          <input id="detailName" name="name" type="text" maxlength="60" required />
+        </label>
+
+        <label class="field">
+          <span>D&iacute;a de cursado</span>
+          <select id="detailClassDay" name="classDay">
+            <option value="">Sin definir</option>
+            <option value="1">Lunes</option>
+            <option value="2">Martes</option>
+            <option value="3">Mi&eacute;rcoles</option>
+            <option value="4">Jueves</option>
+            <option value="5">Viernes</option>
+            <option value="6">S&aacute;bado</option>
+            <option value="0">Domingo</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Examen</span>
+          <span class="date-control">
+            <input id="detailExamDate" name="examDate" type="date" />
+            <button
+              id="calendarButton"
+              class="calendar-button"
+              type="button"
+              aria-label="Abrir calendario"
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z" />
+              </svg>
+            </button>
+          </span>
+        </label>
+
+        <p class="field-error" id="detailError" role="alert"></p>
+
+        <button class="delete-button" id="deleteButton" type="button">
+          Eliminar
+        </button>
+      </form>
+    </dialog>
+
+    <script src="scheduler.js"></script>
+    <script src="folder-storage.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
