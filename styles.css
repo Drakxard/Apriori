@@ -194,6 +194,11 @@ body.dock-visible .subject-dock,
   white-space: nowrap;
 }
 
+/* Keep one five-subject palette together and start the next one at the far edge. */
+.subject-dock-card:nth-child(6) {
+  margin-left: auto;
+}
+
 .subject-dock-card:active {
   cursor: grabbing;
 }

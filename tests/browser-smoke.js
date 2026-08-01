@@ -379,6 +379,49 @@ async function main() {
     windowsVirtualKeyCode: 27,
   });
 
+  await evaluate(`(() => {
+    const add = (name) => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true }));
+      document.querySelector('#newSubjectName').value = name;
+      document.querySelector('#addForm').requestSubmit();
+    };
+    add('Cálculo 3');
+    add('Planificación Estratégica');
+    add('Física 1');
+  })()`);
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 1366,
+    height: 768,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  const dockGroups = await evaluate(`(() => {
+    document.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      clientX: innerWidth / 2,
+      clientY: innerHeight - 2
+    }));
+    const cards = [...document.querySelectorAll('.subject-dock-card')];
+    const bounds = cards.map((card) => card.getBoundingClientRect());
+    return {
+      labels: cards.map((card) => card.textContent.trim()),
+      leftGap: bounds[5].left - bounds[4].right,
+      leftEdge: bounds[0].left,
+      rightEdge: innerWidth - bounds.at(-1).right,
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth
+    };
+  })()`);
+  if (
+    JSON.stringify(dockGroups.labels.slice(5)) !== JSON.stringify(["C3", "PE", "F1"]) ||
+    dockGroups.leftGap < 100 ||
+    dockGroups.leftEdge !== 12 ||
+    dockGroups.rightEdge !== 12 ||
+    dockGroups.overflow
+  ) {
+    throw new Error(`La bandeja no se separó en dos grupos: ${JSON.stringify(dockGroups)}`);
+  }
+  await send("Emulation.clearDeviceMetricsOverride");
+
   const detail = await evaluate(`(() => {
     document.querySelector('.queue-card[data-position="0"]').click();
     const input = document.querySelector('#detailName');

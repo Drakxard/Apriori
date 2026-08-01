@@ -366,16 +366,25 @@
   }
 
   function handleDockDrop(event) {
-    const target = event.target.closest(".subject-dock-card[data-subject-id]");
-    if (!target || !dockDraggedId || target.dataset.subjectId === dockDraggedId) return;
+    if (!dockDraggedId) return;
     event.preventDefault();
 
     const sourceIndex = state.subjects.findIndex((subject) => subject.id === dockDraggedId);
     if (sourceIndex < 0) return;
+
+    const remainingCards = Array.from(
+      elements.subjectDockList.querySelectorAll(".subject-dock-card[data-subject-id]"),
+    ).filter((card) => card.dataset.subjectId !== dockDraggedId);
+    const nextCard = remainingCards.find((card) => {
+      const bounds = card.getBoundingClientRect();
+      return event.clientX < bounds.left + bounds.width / 2;
+    });
+
     const [moved] = state.subjects.splice(sourceIndex, 1);
-    const targetIndex = state.subjects.findIndex((subject) => subject.id === target.dataset.subjectId);
-    const placeAfter = event.clientX >= target.getBoundingClientRect().left + target.offsetWidth / 2;
-    state.subjects.splice(targetIndex + (placeAfter ? 1 : 0), 0, moved);
+    const insertionIndex = nextCard
+      ? state.subjects.findIndex((subject) => subject.id === nextCard.dataset.subjectId)
+      : state.subjects.length;
+    state.subjects.splice(insertionIndex, 0, moved);
     saveState();
     renderSubjectDock();
     finishDockDrag();
