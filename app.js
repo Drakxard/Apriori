@@ -40,6 +40,7 @@
     detailName: document.querySelector("#detailName"),
     detailClassDay: document.querySelector("#detailClassDay"),
     detailExamDate: document.querySelector("#detailExamDate"),
+    detailColor: document.querySelector("#detailColor"),
     detailError: document.querySelector("#detailError"),
     calendarButton: document.querySelector("#calendarButton"),
     deleteButton: document.querySelector("#deleteButton"),
@@ -211,10 +212,12 @@
 
   function normalizeColor(color, index) {
     const normalized = typeof color === "string" ? color.toLowerCase() : "";
+    if (/^#[0-9a-f]{6}$/.test(normalized)) {
+      const legacyIndex = LEGACY_PALETTE.findIndex((item) => item.toLowerCase() === normalized);
+      return legacyIndex >= 0 ? PALETTE[legacyIndex % PALETTE.length] : normalized;
+    }
     const currentIndex = PALETTE.findIndex((item) => item.toLowerCase() === normalized);
     if (currentIndex >= 0) return PALETTE[currentIndex];
-    const legacyIndex = LEGACY_PALETTE.findIndex((item) => item.toLowerCase() === normalized);
-    if (legacyIndex >= 0) return PALETTE[legacyIndex % PALETTE.length];
     return PALETTE[index % PALETTE.length];
   }
 
@@ -316,6 +319,7 @@
     elements.calendarButton.addEventListener("click", openDatePicker);
     elements.detailClassDay.addEventListener("change", saveSubjectDetails);
     elements.detailExamDate.addEventListener("change", saveSubjectDetails);
+    elements.detailColor.addEventListener("change", saveSubjectDetails);
     elements.queue.addEventListener("click", handleCardClick);
     elements.queue.addEventListener("pointerdown", handlePointerDown);
     elements.queue.addEventListener("pointermove", handlePointerMove);
@@ -441,6 +445,7 @@
     elements.detailName.value = subject.name;
     elements.detailClassDay.value = subject.classDay === null ? "" : String(subject.classDay);
     elements.detailExamDate.value = subject.examDate || "";
+    elements.detailColor.value = subject.color;
     elements.detailError.textContent = "";
     elements.detailDialog.showModal();
   }
@@ -473,10 +478,12 @@
 
     const nextClassDay = elements.detailClassDay.value === "" ? null : Number(elements.detailClassDay.value);
     const nextExamDate = elements.detailExamDate.value || null;
+    const nextColor = normalizeColor(elements.detailColor.value, 0);
     const scheduleChanged = subject.classDay !== nextClassDay || subject.examDate !== nextExamDate;
     subject.name = name;
     subject.classDay = nextClassDay;
     subject.examDate = nextExamDate;
+    subject.color = nextColor;
     elements.detailError.textContent = "";
     if (scheduleChanged) rebuildRing();
     else saveState();

@@ -334,6 +334,9 @@ async function main() {
     const date = document.querySelector('#detailExamDate');
     date.value = '2026-08-15';
     date.dispatchEvent(new Event('change', { bubbles: true }));
+    const color = document.querySelector('#detailColor');
+    color.value = '#e45b9d';
+    color.dispatchEvent(new Event('change', { bubbles: true }));
     const saved = JSON.parse(localStorage.getItem('study-ticket-queue:v1')).subjects[0];
     const panelStyle = getComputedStyle(document.querySelector('#detailDialog'));
     return {
@@ -341,6 +344,13 @@ async function main() {
       name: saved.name,
       classDay: saved.classDay,
       examDate: saved.examDate,
+      color: saved.color,
+      colorControl: {
+        width: getComputedStyle(color).width,
+        height: getComputedStyle(color).height,
+        border: getComputedStyle(color).borderTopWidth,
+        radius: getComputedStyle(color).borderRadius
+      },
       border: panelStyle.borderTopWidth,
       radius: panelStyle.borderRadius,
       shadow: panelStyle.boxShadow
@@ -351,6 +361,11 @@ async function main() {
     detail.name !== "Estructuras y Organizaciones" ||
     detail.classDay !== 3 ||
     detail.examDate !== "2026-08-15" ||
+    detail.color !== "#e45b9d" ||
+    detail.colorControl.width !== "42px" ||
+    detail.colorControl.height !== "42px" ||
+    detail.colorControl.border !== "4px" ||
+    detail.colorControl.radius !== "0px" ||
     detail.border !== "4px" ||
     detail.radius !== "0px" ||
     detail.shadow !== "none"

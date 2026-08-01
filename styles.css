@@ -314,6 +314,30 @@ dialog::backdrop {
   stroke-linejoin: round;
 }
 
+.color-field input[type="color"] {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 4px solid #000000;
+  border-radius: 0;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.color-field input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-field input[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: 0;
+}
+
+.color-field input[type="color"]::-moz-color-swatch {
+  border: 0;
+  border-radius: 0;
+}
+
 .field-error {
   min-height: 1em;
   margin: -7px 0 0;
