@@ -389,6 +389,40 @@ dialog::backdrop {
   position: relative;
 }
 
+.detail-summary {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 12px;
+}
+
+.queue-metric {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.queue-metric > span {
+  min-height: 30px;
+  display: flex;
+  align-items: end;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.queue-metric output {
+  min-width: 0;
+  height: 42px;
+  padding: 0 6px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #000000;
+  background: #ffffff;
+  font-size: 12px;
+  line-height: 1.1;
+  text-align: center;
+}
+
 .color-button {
   width: 42px;
   height: 42px;

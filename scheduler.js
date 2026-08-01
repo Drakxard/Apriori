@@ -262,6 +262,17 @@
     return ring.slice(index).concat(ring.slice(0, index));
   }
 
+  function nextOccurrenceDistance(ring, subjectId) {
+    if (!Array.isArray(ring) || ring.length === 0 || !subjectId) return null;
+
+    const firstIndex = ring.indexOf(subjectId);
+    if (firstIndex < 0) return null;
+    if (firstIndex > 0) return firstIndex;
+
+    const nextIndex = ring.indexOf(subjectId, 1);
+    return nextIndex >= 0 ? nextIndex : ring.length;
+  }
+
   function arrangeTickets(counts, preferredOrder = [], preferredHead = null) {
     const ids = counts.map((item) => item.id);
     const order = [
@@ -331,6 +342,7 @@
     differenceInDays,
     hasCircularGap,
     localDay,
+    nextOccurrenceDistance,
     parseLocalDate,
     ringGapScore,
     weightSignature,

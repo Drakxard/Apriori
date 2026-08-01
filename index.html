@@ -100,52 +100,64 @@
           </span>
         </label>
 
-        <div class="field color-field">
-          <span id="detailColorLabel">Color</span>
-          <input id="detailColor" name="color" type="hidden" />
-          <button
-            id="colorButton"
-            class="color-button"
-            type="button"
-            aria-labelledby="detailColorLabel colorButtonLabel"
-            aria-haspopup="dialog"
-            aria-expanded="false"
-          >
-            <span class="sr-only" id="colorButtonLabel">Cambiar de color</span>
-          </button>
+        <div class="detail-summary">
+          <div class="field color-field">
+            <span id="detailColorLabel">Color</span>
+            <input id="detailColor" name="color" type="hidden" />
+            <button
+              id="colorButton"
+              class="color-button"
+              type="button"
+              aria-labelledby="detailColorLabel colorButtonLabel"
+              aria-haspopup="dialog"
+              aria-expanded="false"
+            >
+              <span class="sr-only" id="colorButtonLabel">Cambiar de color</span>
+            </button>
 
-          <div
-            class="color-picker"
-            id="colorPicker"
-            role="dialog"
-            aria-labelledby="colorPickerTitle"
-            hidden
-          >
-            <p class="color-picker-title" id="colorPickerTitle">Cambiar de color</p>
-            <label class="color-slider">
-              <span>Tono</span>
-              <input id="colorHue" type="range" min="0" max="360" step="1" />
-            </label>
-            <label class="color-slider">
-              <span>Saturaci&oacute;n</span>
-              <input id="colorSaturation" type="range" min="0" max="100" step="1" />
-            </label>
-            <label class="color-slider">
-              <span>Luz</span>
-              <input id="colorLightness" type="range" min="0" max="100" step="1" />
-            </label>
-            <label class="color-hex-field">
-              <span>Hex o RGB</span>
-              <input
-                id="colorHex"
-                type="text"
-                maxlength="18"
-                placeholder="#FDC745 o 253, 199, 69"
-                spellcheck="false"
-                aria-describedby="colorInputError"
-              />
-            </label>
-            <p class="color-input-error" id="colorInputError" role="alert"></p>
+            <div
+              class="color-picker"
+              id="colorPicker"
+              role="dialog"
+              aria-labelledby="colorPickerTitle"
+              hidden
+            >
+              <p class="color-picker-title" id="colorPickerTitle">Cambiar de color</p>
+              <label class="color-slider">
+                <span>Tono</span>
+                <input id="colorHue" type="range" min="0" max="360" step="1" />
+              </label>
+              <label class="color-slider">
+                <span>Saturaci&oacute;n</span>
+                <input id="colorSaturation" type="range" min="0" max="100" step="1" />
+              </label>
+              <label class="color-slider">
+                <span>Luz</span>
+                <input id="colorLightness" type="range" min="0" max="100" step="1" />
+              </label>
+              <label class="color-hex-field">
+                <span>Hex o RGB</span>
+                <input
+                  id="colorHex"
+                  type="text"
+                  maxlength="18"
+                  placeholder="#FDC745 o 253, 199, 69"
+                  spellcheck="false"
+                  aria-describedby="colorInputError"
+                />
+              </label>
+              <p class="color-input-error" id="colorInputError" role="alert"></p>
+            </div>
+          </div>
+
+          <div class="queue-metric">
+            <span id="appearancesLabel">Apariciones por vuelta</span>
+            <output id="detailAppearances" aria-labelledby="appearancesLabel"></output>
+          </div>
+
+          <div class="queue-metric">
+            <span id="nextTurnLabel">Vuelve en</span>
+            <output id="detailNextTurn" aria-labelledby="nextTurnLabel"></output>
           </div>
         </div>
 

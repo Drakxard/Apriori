@@ -43,6 +43,8 @@
     detailClassDay: document.querySelector("#detailClassDay"),
     detailExamDate: document.querySelector("#detailExamDate"),
     detailColor: document.querySelector("#detailColor"),
+    detailAppearances: document.querySelector("#detailAppearances"),
+    detailNextTurn: document.querySelector("#detailNextTurn"),
     colorButton: document.querySelector("#colorButton"),
     colorPicker: document.querySelector("#colorPicker"),
     colorHue: document.querySelector("#colorHue"),
@@ -292,6 +294,7 @@
     ensureFreshRing();
     elements.queue.replaceChildren();
     renderSubjectDock();
+    if (elements.detailDialog.open) renderDetailMetrics();
 
     if (!state.ring.length) return;
 
@@ -589,8 +592,30 @@
     elements.detailExamDate.value = subject.examDate || "";
     elements.detailColor.value = subject.color;
     updateColorButton(subject.color);
+    renderDetailMetrics(subject);
     elements.detailError.textContent = "";
     elements.detailDialog.showModal();
+  }
+
+  function renderDetailMetrics(selectedSubject = null) {
+    const subject = selectedSubject || subjectById(elements.detailId.value);
+    if (!subject) {
+      elements.detailAppearances.textContent = "—";
+      elements.detailNextTurn.textContent = "—";
+      return;
+    }
+
+    const appearances = state.ring.reduce(
+      (total, id) => total + (id === subject.id ? 1 : 0),
+      0,
+    );
+    const distance = Scheduler.nextOccurrenceDistance(state.ring, subject.id);
+    elements.detailAppearances.textContent = `${appearances} ${
+      appearances === 1 ? "aparición" : "apariciones"
+    }`;
+    elements.detailNextTurn.textContent = Number.isInteger(distance)
+      ? `${distance} ${distance === 1 ? "turno" : "turnos"}`
+      : "—";
   }
 
   function toggleColorPicker() {

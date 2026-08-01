@@ -6,6 +6,7 @@ const {
   buildRing,
   calculateWeight,
   hasCircularGap,
+  nextOccurrenceDistance,
   parseLocalDate,
 } = require("../scheduler.js");
 
@@ -79,6 +80,19 @@ test("valida fechas locales sin aceptar desbordes", () => {
   assert.ok(parseLocalDate("2026-02-28"));
   assert.equal(parseLocalDate("2026-02-30"), null);
   assert.equal(parseLocalDate("31/07/2026"), null);
+});
+
+test("calcula los turnos hasta la próxima aparición circular", () => {
+  assert.equal(nextOccurrenceDistance(["A", "B", "C", "A"], "B"), 1);
+  assert.equal(nextOccurrenceDistance(["A", "B", "C", "A"], "A"), 3);
+  assert.equal(nextOccurrenceDistance(["A", "B", "C"], "A"), 3);
+  assert.equal(nextOccurrenceDistance(["A"], "A"), 1);
+});
+
+test("no calcula distancia para una cola vacía o una materia ausente", () => {
+  assert.equal(nextOccurrenceDistance([], "A"), null);
+  assert.equal(nextOccurrenceDistance(["A", "B"], "C"), null);
+  assert.equal(nextOccurrenceDistance(null, "A"), null);
 });
 
 test("genera siglas compactas", () => {

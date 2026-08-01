@@ -451,8 +451,16 @@ async function main() {
     const day = document.querySelector('#detailClassDay');
     day.value = '3';
     day.dispatchEvent(new Event('change', { bubbles: true }));
+    const beforeExamAppearances = document.querySelector('#detailAppearances').textContent;
     const date = document.querySelector('#detailExamDate');
-    date.value = '2026-08-15';
+    const examDay = new Date();
+    examDay.setDate(examDay.getDate() + 3);
+    const expectedExamDate = [
+      examDay.getFullYear(),
+      String(examDay.getMonth() + 1).padStart(2, '0'),
+      String(examDay.getDate()).padStart(2, '0')
+    ].join('-');
+    date.value = expectedExamDate;
     date.dispatchEvent(new Event('change', { bubbles: true }));
     const colorField = document.querySelector('.color-field');
     const colorButton = document.querySelector('#colorButton');
@@ -478,7 +486,16 @@ async function main() {
     colorText.dispatchEvent(new Event('change', { bubbles: true }));
     day.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     const closedOutside = colorPicker.hidden;
-    const saved = JSON.parse(localStorage.getItem('study-ticket-queue:v1')).subjects[0];
+    const savedState = JSON.parse(localStorage.getItem('study-ticket-queue:v1'));
+    const saved = savedState.subjects[0];
+    const ringAppearances = savedState.ring.filter((id) => id === saved.id).length;
+    const firstIndex = savedState.ring.indexOf(saved.id);
+    const laterIndex = savedState.ring.indexOf(saved.id, 1);
+    const expectedDistance = firstIndex > 0
+      ? firstIndex
+      : laterIndex >= 0
+        ? laterIndex
+        : savedState.ring.length;
     const panelStyle = getComputedStyle(document.querySelector('#detailDialog'));
     return {
       open: document.querySelector('#detailDialog').open,
@@ -486,6 +503,12 @@ async function main() {
       classDay: saved.classDay,
       examDate: saved.examDate,
       color: saved.color,
+      expectedExamDate,
+      beforeExamAppearances,
+      appearances: document.querySelector('#detailAppearances').textContent,
+      nextTurn: document.querySelector('#detailNextTurn').textContent,
+      ringAppearances,
+      expectedDistance,
       onlyButtonOpens,
       openedFromButton,
       stayedOpen,
@@ -507,8 +530,12 @@ async function main() {
     !detail.open ||
     detail.name !== "Estructuras y Organizaciones" ||
     detail.classDay !== 3 ||
-    detail.examDate !== "2026-08-15" ||
+    detail.examDate !== detail.expectedExamDate ||
     detail.color !== "#e45b9d" ||
+    detail.beforeExamAppearances === detail.appearances ||
+    detail.appearances !== `${detail.ringAppearances} apariciones` ||
+    detail.ringAppearances !== 4 ||
+    detail.nextTurn !== `${detail.expectedDistance} ${detail.expectedDistance === 1 ? "turno" : "turnos"}` ||
     !detail.onlyButtonOpens ||
     !detail.openedFromButton ||
     !detail.stayedOpen ||
