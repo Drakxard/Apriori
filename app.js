@@ -59,6 +59,8 @@
   let drag = null;
   let isAnimating = false;
   let suppressClick = false;
+  let dockDraggedId = null;
+  let suppressDockClick = false;
   let dayRefreshTimer = null;
 
   bindEvents();
@@ -316,6 +318,7 @@
       const card = document.createElement("button");
       card.type = "button";
       card.className = "subject-dock-card";
+      card.draggable = true;
       card.dataset.subjectId = subject.id;
       card.style.setProperty("--card-color", subject.color);
       card.textContent = Scheduler.acronym(subject.name);
@@ -342,8 +345,52 @@
 
   function handleDockClick(event) {
     const card = event.target.closest(".subject-dock-card[data-subject-id]");
-    if (!card) return;
+    if (!card || suppressDockClick) return;
     openDetails(card.dataset.subjectId);
+  }
+
+  function handleDockDragStart(event) {
+    const card = event.target.closest(".subject-dock-card[data-subject-id]");
+    if (!card) return;
+    dockDraggedId = card.dataset.subjectId;
+    suppressDockClick = true;
+    card.classList.add("is-reordering");
+    event.dataTransfer?.setData("text/plain", dockDraggedId);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+  }
+
+  function handleDockDragOver(event) {
+    if (!dockDraggedId) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  }
+
+  function handleDockDrop(event) {
+    const target = event.target.closest(".subject-dock-card[data-subject-id]");
+    if (!target || !dockDraggedId || target.dataset.subjectId === dockDraggedId) return;
+    event.preventDefault();
+
+    const sourceIndex = state.subjects.findIndex((subject) => subject.id === dockDraggedId);
+    if (sourceIndex < 0) return;
+    const [moved] = state.subjects.splice(sourceIndex, 1);
+    const targetIndex = state.subjects.findIndex((subject) => subject.id === target.dataset.subjectId);
+    const placeAfter = event.clientX >= target.getBoundingClientRect().left + target.offsetWidth / 2;
+    state.subjects.splice(targetIndex + (placeAfter ? 1 : 0), 0, moved);
+    saveState();
+    renderSubjectDock();
+    finishDockDrag();
+  }
+
+  function handleDockDragEnd() {
+    finishDockDrag();
+  }
+
+  function finishDockDrag() {
+    dockDraggedId = null;
+    elements.subjectDockList.querySelector(".is-reordering")?.classList.remove("is-reordering");
+    window.setTimeout(() => {
+      suppressDockClick = false;
+    }, 0);
   }
 
   function bindEvents() {
@@ -367,6 +414,10 @@
     elements.queue.addEventListener("pointercancel", cancelDrag);
     elements.queue.addEventListener("keydown", handleQueueKeydown);
     elements.subjectDockList.addEventListener("click", handleDockClick);
+    elements.subjectDockList.addEventListener("dragstart", handleDockDragStart);
+    elements.subjectDockList.addEventListener("dragover", handleDockDragOver);
+    elements.subjectDockList.addEventListener("drop", handleDockDrop);
+    elements.subjectDockList.addEventListener("dragend", handleDockDragEnd);
     elements.subjectDock.addEventListener("pointerenter", showSubjectDock);
     elements.subjectDock.addEventListener("pointerleave", hideSubjectDock);
     document.addEventListener("pointermove", handleDockProximity);

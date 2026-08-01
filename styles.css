@@ -187,11 +187,19 @@ body.dock-visible .subject-dock,
   border: 4px solid #000000;
   border-radius: 0;
   background: var(--card-color);
-  cursor: pointer;
+  cursor: grab;
   font-size: 25px;
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.subject-dock-card:active {
+  cursor: grabbing;
+}
+
+.subject-dock-card.is-reordering {
+  opacity: 0.45;
 }
 
 @media (prefers-reduced-motion: reduce) {

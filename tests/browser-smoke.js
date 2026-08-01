@@ -323,7 +323,7 @@ async function main() {
   }
   await send("Emulation.clearDeviceMetricsOverride");
 
-  const dock = await evaluate(`(() => {
+  const dock = await evaluate(`(async () => {
     document.dispatchEvent(new PointerEvent('pointermove', {
       bubbles: true,
       clientX: innerWidth / 2,
@@ -331,11 +331,25 @@ async function main() {
     }));
     const cards = [...document.querySelectorAll('.subject-dock-card')];
     const ids = cards.map((card) => card.dataset.subjectId);
-    cards[1].click();
+    cards[1].dispatchEvent(new DragEvent('dragstart', { bubbles: true }));
+    cards[4].dispatchEvent(new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      clientX: cards[4].getBoundingClientRect().right
+    }));
+    cards[1].dispatchEvent(new DragEvent('dragend', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const reorderedCards = [...document.querySelectorAll('.subject-dock-card')];
+    const reorderedIds = reorderedCards.map((card) => card.dataset.subjectId);
+    reorderedCards.at(-1).click();
+    const persistedIds = JSON.parse(localStorage.getItem('study-ticket-queue:v1')).subjects
+      .map((subject) => subject.id);
     return {
       visible: document.body.classList.contains('dock-visible'),
       count: cards.length,
       unique: new Set(ids).size,
+      reordered: reorderedIds.at(-1) === ids[1],
+      persisted: JSON.stringify(reorderedIds) === JSON.stringify(persistedIds),
       detailOpen: document.querySelector('#detailDialog').open,
       selectedId: document.querySelector('#detailId').value,
       clickedId: ids[1]
@@ -345,6 +359,8 @@ async function main() {
     !dock.visible ||
     dock.count !== 5 ||
     dock.unique !== 5 ||
+    !dock.reordered ||
+    !dock.persisted ||
     !dock.detailOpen ||
     dock.selectedId !== dock.clickedId
   ) {
