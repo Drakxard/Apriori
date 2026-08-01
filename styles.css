@@ -404,8 +404,10 @@ dialog::backdrop {
   --picker-saturation: 100%;
   position: absolute;
   z-index: 3;
-  top: calc(100% + 8px);
-  left: 0;
+  top: 50%;
+  right: calc(100% + 26px);
+  left: auto;
+  transform: translateY(-50%);
   width: min(260px, calc(100vw - 76px));
   padding: 14px;
   display: grid;
@@ -417,6 +419,15 @@ dialog::backdrop {
 
 .color-picker[hidden] {
   display: none;
+}
+
+@media (max-width: 900px) {
+  .color-picker {
+    top: calc(100% + 8px);
+    right: auto;
+    left: 0;
+    transform: none;
+  }
 }
 
 .color-picker-title {
