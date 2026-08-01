@@ -323,6 +323,46 @@ async function main() {
   }
   await send("Emulation.clearDeviceMetricsOverride");
 
+  const dock = await evaluate(`(() => {
+    document.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      clientX: innerWidth / 2,
+      clientY: innerHeight - 2
+    }));
+    const cards = [...document.querySelectorAll('.subject-dock-card')];
+    const ids = cards.map((card) => card.dataset.subjectId);
+    cards[1].click();
+    return {
+      visible: document.body.classList.contains('dock-visible'),
+      count: cards.length,
+      unique: new Set(ids).size,
+      detailOpen: document.querySelector('#detailDialog').open,
+      selectedId: document.querySelector('#detailId').value,
+      clickedId: ids[1]
+    };
+  })()`);
+  if (
+    !dock.visible ||
+    dock.count !== 5 ||
+    dock.unique !== 5 ||
+    !dock.detailOpen ||
+    dock.selectedId !== dock.clickedId
+  ) {
+    throw new Error(`Falló la bandeja inferior: ${JSON.stringify(dock)}`);
+  }
+  await send("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "Escape",
+    code: "Escape",
+    windowsVirtualKeyCode: 27,
+  });
+  await send("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "Escape",
+    code: "Escape",
+    windowsVirtualKeyCode: 27,
+  });
+
   const detail = await evaluate(`(() => {
     document.querySelector('.queue-card[data-position="0"]').click();
     const input = document.querySelector('#detailName');

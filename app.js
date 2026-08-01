@@ -30,6 +30,8 @@
 
   const elements = {
     queue: document.querySelector("#queue"),
+    subjectDock: document.querySelector("#subjectDock"),
+    subjectDockList: document.querySelector("#subjectDockList"),
     addDialog: document.querySelector("#addDialog"),
     addForm: document.querySelector("#addForm"),
     newSubjectName: document.querySelector("#newSubjectName"),
@@ -276,6 +278,7 @@
   function render() {
     ensureFreshRing();
     elements.queue.replaceChildren();
+    renderSubjectDock();
 
     if (!state.ring.length) return;
 
@@ -306,6 +309,43 @@
     }
   }
 
+  function renderSubjectDock() {
+    elements.subjectDockList.replaceChildren();
+    if (state.subjects.length === 0) document.body.classList.remove("dock-visible");
+    for (const subject of state.subjects) {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "subject-dock-card";
+      card.dataset.subjectId = subject.id;
+      card.style.setProperty("--card-color", subject.color);
+      card.textContent = Scheduler.acronym(subject.name);
+      card.setAttribute("aria-label", `Ver detalles de ${subject.name}`);
+      elements.subjectDockList.append(card);
+    }
+  }
+
+  function handleDockProximity(event) {
+    if (!storageReady || state.subjects.length === 0) return;
+    if (window.innerHeight - event.clientY <= 90) showSubjectDock();
+    else if (!elements.subjectDock.matches(":hover")) hideSubjectDock();
+  }
+
+  function showSubjectDock() {
+    if (storageReady && state.subjects.length > 0) document.body.classList.add("dock-visible");
+  }
+
+  function hideSubjectDock() {
+    if (!elements.subjectDock.matches(":hover") && !elements.subjectDock.matches(":focus-within")) {
+      document.body.classList.remove("dock-visible");
+    }
+  }
+
+  function handleDockClick(event) {
+    const card = event.target.closest(".subject-dock-card[data-subject-id]");
+    if (!card) return;
+    openDetails(card.dataset.subjectId);
+  }
+
   function bindEvents() {
     elements.storagePrimaryButton.addEventListener("click", () => runStorageAction(storageGateMode));
     elements.storageSecondaryButton.addEventListener("click", () => runStorageAction("select"));
@@ -326,6 +366,11 @@
     elements.queue.addEventListener("pointerup", handlePointerUp);
     elements.queue.addEventListener("pointercancel", cancelDrag);
     elements.queue.addEventListener("keydown", handleQueueKeydown);
+    elements.subjectDockList.addEventListener("click", handleDockClick);
+    elements.subjectDock.addEventListener("pointerenter", showSubjectDock);
+    elements.subjectDock.addEventListener("pointerleave", hideSubjectDock);
+    document.addEventListener("pointermove", handleDockProximity);
+    document.addEventListener("pointerleave", hideSubjectDock);
     document.addEventListener("keydown", handleGlobalKeydown);
     document.addEventListener("visibilitychange", refreshAfterVisibilityChange);
 

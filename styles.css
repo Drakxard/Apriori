@@ -23,7 +23,8 @@ body {
   color: var(--ink);
 }
 
-.storage-blocked .app-shell {
+.storage-blocked .app-shell,
+.storage-blocked .subject-dock {
   visibility: hidden;
 }
 
@@ -141,6 +142,62 @@ select:focus-visible {
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.subject-dock {
+  position: fixed;
+  z-index: 4;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 18px 12px 10px;
+  overflow: hidden;
+  background: #ffffff;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(100%);
+  transition: transform 160ms ease, opacity 120ms ease;
+}
+
+body.dock-visible .subject-dock,
+.subject-dock:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.subject-dock-list {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.subject-dock-list::-webkit-scrollbar {
+  display: none;
+}
+
+.subject-dock-card {
+  width: 92px;
+  min-width: 92px;
+  height: 54px;
+  padding: 0 6px;
+  overflow: hidden;
+  border: 4px solid #000000;
+  border-radius: 0;
+  background: var(--card-color);
+  cursor: pointer;
+  font-size: 25px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .subject-dock {
+    transition: none;
+  }
 }
 
 dialog {
