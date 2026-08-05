@@ -11,6 +11,7 @@
   const CLICK_THRESHOLD = 6;
   const HOLD_DELAY = 150;
   const HOLD_LIFT = 8;
+  const DOCK_ACTIVATION_HEIGHT = 90;
   const ANIMATION_MS = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 270;
   const PALETTE = [
     "#13a8e0",
@@ -85,6 +86,7 @@
   let suppressClick = false;
   let dockDraggedId = null;
   let suppressDockClick = false;
+  let pointerInDockActivationZone = false;
   let dayRefreshTimer = null;
   let moduleCatalog = null;
   let moduleSearchSubjectId = null;
@@ -401,16 +403,27 @@
 
   function handleDockProximity(event) {
     if (!storageReady || state.subjects.length === 0) return;
-    if (window.innerHeight - event.clientY <= 90) showSubjectDock();
-    else if (!elements.subjectDock.matches(":hover")) hideSubjectDock();
+    pointerInDockActivationZone = window.innerHeight - event.clientY <= DOCK_ACTIVATION_HEIGHT;
+    if (pointerInDockActivationZone) showSubjectDock();
+    else hideSubjectDock();
   }
 
   function showSubjectDock() {
     if (storageReady && state.subjects.length > 0) document.body.classList.add("dock-visible");
   }
 
-  function hideSubjectDock() {
-    if (!elements.subjectDock.matches(":hover") && !elements.subjectDock.matches(":focus-within")) {
+  function hideSubjectDock(event) {
+    if (event?.type === "pointerleave" && event.currentTarget === document) {
+      pointerInDockActivationZone = false;
+    } else if (typeof event?.clientY === "number") {
+      pointerInDockActivationZone = window.innerHeight - event.clientY <= DOCK_ACTIVATION_HEIGHT;
+    }
+
+    if (
+      !pointerInDockActivationZone &&
+      !elements.subjectDock.matches(":hover") &&
+      !elements.subjectDock.matches(":focus-within")
+    ) {
       document.body.classList.remove("dock-visible");
     }
   }
@@ -527,6 +540,7 @@
     elements.subjectDock.addEventListener("pointerenter", showSubjectDock);
     elements.subjectDock.addEventListener("pointerleave", hideSubjectDock);
     document.addEventListener("pointermove", handleDockProximity);
+    document.addEventListener("pointerdown", handleDockProximity);
     document.addEventListener("pointerleave", hideSubjectDock);
     document.addEventListener("pointerdown", closeColorPickerOnOutsidePress);
     document.addEventListener("keydown", handleGlobalKeydown);
