@@ -41,6 +41,7 @@ function notFoundError() {
 
 function createDirectory(options = {}) {
   const files = new Map(Object.entries(options.files || {}));
+  const directories = new Map();
   const writes = [];
   const handle = {
     name: options.name || "Estudio",
@@ -81,7 +82,13 @@ function createDirectory(options = {}) {
         },
       };
     },
+    async getDirectoryHandle(name, settings = {}) {
+      if (!directories.has(name) && !settings.create) throw notFoundError();
+      if (!directories.has(name)) directories.set(name, createDirectory({ name }));
+      return directories.get(name);
+    },
   };
+  handle.directories = directories;
   return handle;
 }
 
@@ -283,4 +290,29 @@ test("guarda y recupera la copia HTML de un módulo", async () => {
     "<!doctype html><title>Inglés</title>",
   );
   await assert.rejects(storage.saveModule("../inseguro", "x"), TypeError);
+});
+
+test("guarda los modulos en una subcarpeta y actualiza la copia del mismo id", async () => {
+  const directory = createDirectory();
+  const storage = makeStorage({ directory });
+  await storage.initialize(state());
+
+  await storage.saveModule("ingles-vocabulario", "primera copia");
+  await storage.saveModule("ingles-vocabulario", "copia actualizada");
+
+  const modules = directory.directories.get("modulos");
+  assert.ok(modules);
+  assert.equal(directory.files.has("apriori-module-ingles-vocabulario.html"), false);
+  assert.equal(modules.files.get("apriori-module-ingles-vocabulario.html"), "copia actualizada");
+  assert.equal(await storage.readModule("ingles-vocabulario"), "copia actualizada");
+});
+
+test("recupera modulos guardados previamente en la carpeta raiz", async () => {
+  const directory = createDirectory({
+    files: { "apriori-module-ingles-vocabulario.html": "copia anterior" },
+  });
+  const storage = makeStorage({ directory });
+  await storage.initialize(state());
+
+  assert.equal(await storage.readModule("ingles-vocabulario"), "copia anterior");
 });

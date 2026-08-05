@@ -8,6 +8,7 @@
   const FILE_NAME = "apriori.json";
   const FILE_FORMAT = "apriori.study-queue";
   const FILE_VERSION = 1;
+  const MODULE_DIRECTORY_NAME = "modulos";
   const MIRROR_KEY = "study-ticket-queue:v1";
   const SYNC_KEY = "study-ticket-folder-sync:v1";
   const HANDLE_KEY = "data-directory";
@@ -361,6 +362,10 @@
       return `apriori-module-${id}.html`;
     }
 
+    async function modulesDirectory(create = true) {
+      return directoryHandle.getDirectoryHandle(MODULE_DIRECTORY_NAME, { create });
+    }
+
     function saveModule(moduleId, html) {
       if (!ready || !directoryHandle) {
         return Promise.reject(new DOMException("La carpeta no está disponible", "NotAllowedError"));
@@ -371,7 +376,8 @@
       const operation = writeChain
         .catch(() => undefined)
         .then(async () => {
-          const fileHandle = await directoryHandle.getFileHandle(moduleFileName(moduleId), { create: true });
+          const moduleDirectory = await modulesDirectory();
+          const fileHandle = await moduleDirectory.getFileHandle(moduleFileName(moduleId), { create: true });
           const writable = await fileHandle.createWritable();
           try {
             await writable.write(html);
@@ -393,8 +399,18 @@
       if (!ready || !directoryHandle) {
         throw new DOMException("La carpeta no está disponible", "NotAllowedError");
       }
-      const fileHandle = await directoryHandle.getFileHandle(moduleFileName(moduleId));
-      return (await fileHandle.getFile()).text();
+      const fileName = moduleFileName(moduleId);
+      try {
+        const moduleDirectory = await modulesDirectory(false);
+        const fileHandle = await moduleDirectory.getFileHandle(fileName);
+        return (await fileHandle.getFile()).text();
+      } catch (error) {
+        // Permite abrir las copias creadas por versiones anteriores, que estaban
+        // en la carpeta elegida directamente.
+        if (error?.name !== "NotFoundError") throw error;
+        const legacyFileHandle = await directoryHandle.getFileHandle(fileName);
+        return (await legacyFileHandle.getFile()).text();
+      }
     }
 
     return {
@@ -418,6 +434,7 @@
     FILE_FORMAT,
     FILE_NAME,
     FILE_VERSION,
+    MODULE_DIRECTORY_NAME,
     HANDLE_KEY,
     MIRROR_KEY,
     STORE_NAME,
