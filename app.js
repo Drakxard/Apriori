@@ -708,10 +708,6 @@
     const subject = subjectById(moduleSearchSubjectId);
     const module = moduleCatalog?.find((item) => item.id === button.dataset.moduleId);
     if (!subject || !module) return;
-    // Se crea durante el click para que el navegador no bloquee la pestaña
-    // mientras termina la descarga.
-    const moduleWindow = window.open("", "_blank");
-    if (moduleWindow) moduleWindow.opener = null;
     const row = button.closest(".module-result");
     button.disabled = true;
     button.textContent = "...";
@@ -726,12 +722,9 @@
       await folderStorage.saveModule(module.id, html);
       subject.module = module;
       await folderStorage.save(state);
-      // Si el navegador bloquea la pestaña nueva, la navegación ocurre en esta
-      // misma pestaña y no deja margen para ejecutar código después de ella.
       elements.moduleDialog.close();
-      openModuleHtml(html, moduleWindow);
+      openModuleHtml(html);
     } catch (error) {
-      moduleWindow?.close();
       if (subject.module?.id === module.id) subject.module = null;
       row?.classList.remove("is-downloading");
       elements.moduleError.textContent = error.message || "No se pudo descargar el módulo.";
@@ -750,11 +743,10 @@
     }
   }
 
-  function openModuleHtml(html, targetWindow = null) {
+  function openModuleHtml(html) {
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    if (targetWindow && !targetWindow.closed) targetWindow.location.replace(url);
-    else window.location.assign(url);
+    window.location.assign(url);
   }
 
   function renderAssignedModule(subject) {
