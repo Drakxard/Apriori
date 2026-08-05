@@ -439,12 +439,8 @@ async function main() {
     const input = document.querySelector('#detailName');
     input.value = 'Estructuras y Organizaciones';
     input.dispatchEvent(new Event('blur'));
-    const weight = document.querySelector('#detailBaseWeight');
-    weight.value = '9';
-    weight.dispatchEvent(new Event('change', { bubbles: true }));
-    const day = document.querySelector('input[name="classDays"][value="3"]');
-    day.checked = true;
-    day.dispatchEvent(new Event('change', { bubbles: true }));
+    const weight = document.querySelector('#weightCycleButton');
+    weight.click();
     const beforeExamAppearances = document.querySelector('#detailAppearances').textContent;
     document.querySelector('#addEvaluationButton').click();
     const date = document.querySelector('.evaluation-date');
@@ -481,7 +477,7 @@ async function main() {
     colorText.value = '#e45b9d';
     colorText.dispatchEvent(new Event('input', { bubbles: true }));
     colorText.dispatchEvent(new Event('change', { bubbles: true }));
-    day.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    input.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     const closedOutside = colorPicker.hidden;
     const savedState = JSON.parse(localStorage.getItem('study-ticket-queue:v1'));
     const saved = savedState.subjects[0];
@@ -497,7 +493,6 @@ async function main() {
     return {
       open: document.querySelector('#detailDialog').open,
       name: saved.name,
-      classDay: saved.classDays[0],
       examDate: saved.evaluations[0].date,
       examName: saved.evaluations[0].name,
       baseWeight: saved.baseWeight,
@@ -528,10 +523,9 @@ async function main() {
   if (
     !detail.open ||
     detail.name !== "Estructuras y Organizaciones" ||
-    detail.classDay !== 3 ||
     detail.examDate !== detail.expectedExamDate ||
     detail.examName !== "Primer parcial" ||
-    detail.baseWeight !== 9 ||
+    detail.baseWeight !== 2 ||
     detail.color !== "#e45b9d" ||
     detail.beforeExamAppearances === detail.appearances ||
     detail.appearances !== `${detail.ringAppearances} apariciones` ||
@@ -571,7 +565,7 @@ async function main() {
   }
 
   const settings = await evaluate(`(() => {
-    document.querySelector('#settingsButton').click();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: '|', bubbles: true }));
     document.querySelector('#cycleSize').value = '12';
     document.querySelector('#urgencyK').value = '0';
     document.querySelector('#settingsForm').requestSubmit();

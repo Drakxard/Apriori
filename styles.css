@@ -424,6 +424,23 @@ dialog::backdrop {
   font-size: 21px;
 }
 
+.name-and-weight {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.weight-cycle-button {
+  height: 48px;
+  padding: 0 8px;
+  border: 2px solid #000;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
 .date-control {
   position: relative;
   display: block;

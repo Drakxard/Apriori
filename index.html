@@ -13,10 +13,6 @@
   </head>
   <body class="storage-blocked">
     <main class="app-shell">
-      <div class="planner-status">
-        <button id="settingsButton" class="settings-button" type="button">Ajustes</button>
-        <output id="modeBadge" class="mode-badge">Regular</output>
-      </div>
       <section class="queue-section" aria-label="Cola circular de materias">
         <div
           class="queue"
@@ -68,28 +64,16 @@
       <form id="detailForm" method="dialog" novalidate>
         <input id="detailId" name="id" type="hidden" />
 
-        <label class="field name-field">
-          <span>Nombre</span>
-          <input id="detailName" name="name" type="text" maxlength="60" required />
-        </label>
-
-        <div class="planner-fields">
-          <label class="field"><span>Peso base</span><input id="detailBaseWeight" type="number" min="1" max="100" required /></label>
-          <label class="check-field"><input id="detailActive" type="checkbox" /> Activa</label>
+        <div class="name-and-weight">
+          <label class="field name-field">
+            <span>Nombre</span>
+            <input id="detailName" name="name" type="text" maxlength="60" required />
+          </label>
+          <button id="weightCycleButton" class="weight-cycle-button" type="button" aria-label="Cambiar prioridad"></button>
         </div>
 
-        <fieldset class="class-days"><legend>D&iacute;as de cursado</legend>
-          <label><input type="checkbox" name="classDays" value="1" /> Lu</label>
-          <label><input type="checkbox" name="classDays" value="2" /> Ma</label>
-          <label><input type="checkbox" name="classDays" value="3" /> Mi</label>
-          <label><input type="checkbox" name="classDays" value="4" /> Ju</label>
-          <label><input type="checkbox" name="classDays" value="5" /> Vi</label>
-          <label><input type="checkbox" name="classDays" value="6" /> S&aacute;</label>
-          <label><input type="checkbox" name="classDays" value="0" /> Do</label>
-        </fieldset>
-
         <section class="evaluations-section" aria-labelledby="evaluationsTitle">
-          <div class="section-heading"><span id="evaluationsTitle">Evaluaciones</span><button id="addEvaluationButton" type="button">+ Agregar</button></div>
+          <div class="section-heading"><span id="evaluationsTitle">Fecha de examen</span><button id="addEvaluationButton" type="button">+ Agregar fecha</button></div>
           <div id="evaluationList" class="evaluation-list"></div>
         </section>
 
@@ -152,12 +136,6 @@
             <span id="nextTurnLabel">Vuelve en</span>
             <output id="detailNextTurn" aria-labelledby="nextTurnLabel"></output>
           </div>
-        </div>
-
-        <div class="schedule-explanation">
-          <output id="detailMode"></output>
-          <output id="detailWeight"></output>
-          <output id="detailReason"></output>
         </div>
 
         <p class="field-error" id="detailError" role="alert"></p>

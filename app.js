@@ -40,17 +40,12 @@
     detailForm: document.querySelector("#detailForm"),
     detailId: document.querySelector("#detailId"),
     detailName: document.querySelector("#detailName"),
-    detailBaseWeight: document.querySelector("#detailBaseWeight"),
-    detailActive: document.querySelector("#detailActive"),
-    classDayInputs: [...document.querySelectorAll('input[name="classDays"]')],
+    weightCycleButton: document.querySelector("#weightCycleButton"),
     evaluationList: document.querySelector("#evaluationList"),
     addEvaluationButton: document.querySelector("#addEvaluationButton"),
     detailColor: document.querySelector("#detailColor"),
     detailAppearances: document.querySelector("#detailAppearances"),
     detailNextTurn: document.querySelector("#detailNextTurn"),
-    detailMode: document.querySelector("#detailMode"),
-    detailWeight: document.querySelector("#detailWeight"),
-    detailReason: document.querySelector("#detailReason"),
     colorButton: document.querySelector("#colorButton"),
     colorPicker: document.querySelector("#colorPicker"),
     colorHue: document.querySelector("#colorHue"),
@@ -59,8 +54,6 @@
     colorHex: document.querySelector("#colorHex"),
     colorInputError: document.querySelector("#colorInputError"),
     detailError: document.querySelector("#detailError"),
-    modeBadge: document.querySelector("#modeBadge"),
-    settingsButton: document.querySelector("#settingsButton"),
     settingsDialog: document.querySelector("#settingsDialog"),
     settingsForm: document.querySelector("#settingsForm"),
     cycleSize: document.querySelector("#cycleSize"),
@@ -234,10 +227,6 @@
       name,
       active: subject.active !== false,
       baseWeight: Math.max(1, Math.min(100, Number(subject.baseWeight) || 1)),
-      classDays: Array.from(new Set(
-        (Array.isArray(subject.classDays) ? subject.classDays : [subject.classDay])
-          .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
-      )).sort(),
       evaluations: normalizeEvaluations(subject.evaluations, subject.examDate),
       createdAt: Number.isNaN(createdAt.getTime()) ? new Date().toISOString() : createdAt.toISOString(),
       color: normalizeColor(subject.color, index),
@@ -326,7 +315,6 @@
     ensureFreshRing();
     elements.queue.replaceChildren();
     renderSubjectDock();
-    renderMode();
     if (elements.detailDialog.open) renderDetailMetrics();
 
     if (!state.ring.length) return;
@@ -492,13 +480,10 @@
     elements.detailName.addEventListener("blur", saveSubjectDetails);
     elements.detailName.addEventListener("keydown", handleDetailNameKeydown);
     elements.deleteButton.addEventListener("click", deleteSelectedSubject);
-    elements.detailBaseWeight.addEventListener("change", saveSubjectDetails);
-    elements.detailActive.addEventListener("change", saveSubjectDetails);
-    elements.classDayInputs.forEach((input) => input.addEventListener("change", saveSubjectDetails));
+    elements.weightCycleButton.addEventListener("click", cycleSubjectWeight);
     elements.addEvaluationButton.addEventListener("click", addEvaluation);
     elements.evaluationList.addEventListener("change", saveEvaluations);
     elements.evaluationList.addEventListener("click", handleEvaluationAction);
-    elements.settingsButton.addEventListener("click", openSettings);
     elements.settingsForm.addEventListener("submit", saveSettings);
     elements.cancelSettings.addEventListener("click", () => elements.settingsDialog.close());
     elements.detailColor.addEventListener("change", commitColorPickerValue);
@@ -587,7 +572,6 @@
       color: nextColor(),
       active: true,
       baseWeight: 1,
-      classDays: [],
       evaluations: [],
     };
     const priorHead = state.ring[0] || null;
@@ -645,9 +629,7 @@
     if (!subject || elements.detailDialog.open) return;
     elements.detailId.value = subject.id;
     elements.detailName.value = subject.name;
-    elements.detailBaseWeight.value = String(subject.baseWeight);
-    elements.detailActive.checked = subject.active;
-    elements.classDayInputs.forEach((input) => { input.checked = subject.classDays.includes(Number(input.value)); });
+    renderWeightCycle(subject);
     renderEvaluations(subject);
     elements.detailColor.value = subject.color;
     updateColorButton(subject.color);
@@ -664,7 +646,6 @@
       return;
     }
 
-    renderScheduleMetrics(subject);
     const appearances = state.ring.reduce(
       (total, id) => total + (id === subject.id ? 1 : 0),
       0,
@@ -687,6 +668,19 @@
       ? `Peso: ${allocation.baseWeight} → ${allocation.finalWeight.toFixed(2)}`
       : "Materia inactiva";
     elements.detailReason.textContent = allocation?.reason || "No participa de la planificación";
+  }
+
+  function renderWeightCycle(subject) {
+    elements.weightCycleButton.textContent = `${Scheduler.acronym(subject.name)} × ${subject.baseWeight}`;
+  }
+
+  function cycleSubjectWeight() {
+    const subject = subjectById(elements.detailId.value);
+    if (!subject) return;
+    subject.baseWeight = subject.baseWeight >= 3 ? 1 : subject.baseWeight + 1;
+    renderWeightCycle(subject);
+    rebuildRing();
+    render();
   }
 
   function renderEvaluations(subject) {
@@ -976,21 +970,9 @@
       return false;
     }
 
-    const baseWeight = Number(elements.detailBaseWeight.value);
-    if (!Number.isInteger(baseWeight) || baseWeight < 1 || baseWeight > 100) {
-      elements.detailError.textContent = "El peso base debe ser un entero entre 1 y 100.";
-      return false;
-    }
-    const classDays = elements.classDayInputs
-      .filter((input) => input.checked)
-      .map((input) => Number(input.value))
-      .sort();
     const nextColor = normalizeColor(elements.detailColor.value, 0);
-    const scheduleChanged = subject.baseWeight !== baseWeight || subject.active !== elements.detailActive.checked;
+    const scheduleChanged = false;
     subject.name = name;
-    subject.baseWeight = baseWeight;
-    subject.active = elements.detailActive.checked;
-    subject.classDays = classDays;
     subject.color = nextColor;
     elements.detailError.textContent = "";
     if (scheduleChanged) rebuildRing();
@@ -1231,6 +1213,11 @@
       event.stopPropagation();
       closeColorPicker();
       elements.colorButton.focus();
+      return;
+    }
+    if (event.key === "|" && !elements.addDialog.open && !elements.detailDialog.open && !elements.settingsDialog.open) {
+      event.preventDefault();
+      openSettings();
       return;
     }
     if (event.key !== "+" || event.ctrlKey || event.metaKey || event.altKey) return;
