@@ -726,10 +726,10 @@
       await folderStorage.saveModule(module.id, html);
       subject.module = module;
       await folderStorage.save(state);
-      openModuleHtml(html, moduleWindow);
-      // La pestaña del módulo ya está al frente, por lo que el diálogo no llega
-      // a mostrarse cerrándose durante la navegación.
+      // Si el navegador bloquea la pestaña nueva, la navegación ocurre en esta
+      // misma pestaña y no deja margen para ejecutar código después de ella.
       elements.moduleDialog.close();
+      openModuleHtml(html, moduleWindow);
     } catch (error) {
       moduleWindow?.close();
       if (subject.module?.id === module.id) subject.module = null;
