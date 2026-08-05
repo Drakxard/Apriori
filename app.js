@@ -722,8 +722,7 @@
       await folderStorage.saveModule(module.id, html);
       subject.module = module;
       await folderStorage.save(state);
-      elements.moduleDialog.close();
-      openAssignedModule(subject);
+      openModuleHtml(html);
     } catch (error) {
       if (subject.module?.id === module.id) subject.module = null;
       row?.classList.remove("is-downloading");
@@ -736,12 +735,16 @@
   async function openAssignedModule(subject) {
     try {
       const html = await folderStorage.readModule(subject.module.id);
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      window.location.assign(URL.createObjectURL(blob));
+      openModuleHtml(html);
     } catch {
       openModuleSearch(subject.id);
       elements.moduleError.textContent = "No se encontró la copia descargada. Volvé a elegir el módulo.";
     }
+  }
+
+  function openModuleHtml(html) {
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    window.location.assign(URL.createObjectURL(blob));
   }
 
   function renderAssignedModule(subject) {
