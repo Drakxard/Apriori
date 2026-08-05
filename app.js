@@ -4,7 +4,7 @@
   const Scheduler = window.StudyScheduler;
   const folderStorage = window.AprioriFolderStorage.createFolderStorage();
   const STORAGE_KEY = "study-ticket-queue:v1";
-  const STATE_VERSION = 1;
+  const STATE_VERSION = 2;
   const DRAG_THRESHOLD = 64;
   const CLICK_THRESHOLD = 6;
   const HOLD_DELAY = 150;
@@ -40,11 +40,17 @@
     detailForm: document.querySelector("#detailForm"),
     detailId: document.querySelector("#detailId"),
     detailName: document.querySelector("#detailName"),
-    detailClassDay: document.querySelector("#detailClassDay"),
-    detailExamDate: document.querySelector("#detailExamDate"),
+    detailBaseWeight: document.querySelector("#detailBaseWeight"),
+    detailActive: document.querySelector("#detailActive"),
+    classDayInputs: [...document.querySelectorAll('input[name="classDays"]')],
+    evaluationList: document.querySelector("#evaluationList"),
+    addEvaluationButton: document.querySelector("#addEvaluationButton"),
     detailColor: document.querySelector("#detailColor"),
     detailAppearances: document.querySelector("#detailAppearances"),
     detailNextTurn: document.querySelector("#detailNextTurn"),
+    detailMode: document.querySelector("#detailMode"),
+    detailWeight: document.querySelector("#detailWeight"),
+    detailReason: document.querySelector("#detailReason"),
     colorButton: document.querySelector("#colorButton"),
     colorPicker: document.querySelector("#colorPicker"),
     colorHue: document.querySelector("#colorHue"),
@@ -53,7 +59,14 @@
     colorHex: document.querySelector("#colorHex"),
     colorInputError: document.querySelector("#colorInputError"),
     detailError: document.querySelector("#detailError"),
-    calendarButton: document.querySelector("#calendarButton"),
+    modeBadge: document.querySelector("#modeBadge"),
+    settingsButton: document.querySelector("#settingsButton"),
+    settingsDialog: document.querySelector("#settingsDialog"),
+    settingsForm: document.querySelector("#settingsForm"),
+    cycleSize: document.querySelector("#cycleSize"),
+    urgencyK: document.querySelector("#urgencyK"),
+    settingsError: document.querySelector("#settingsError"),
+    cancelSettings: document.querySelector("#cancelSettings"),
     deleteButton: document.querySelector("#deleteButton"),
     storageDialog: document.querySelector("#storageDialog"),
     storageMessage: document.querySelector("#storageMessage"),
@@ -82,6 +95,7 @@
       ring: [],
       weightSignature: "",
       dockSplitIndex: 0,
+      settings: { ...Scheduler.DEFAULT_SETTINGS },
     };
   }
 
@@ -96,7 +110,7 @@
   }
 
   function normalizeState(saved) {
-    if (!saved || saved.version !== STATE_VERSION || !Array.isArray(saved.subjects)) {
+    if (!saved || ![1, STATE_VERSION].includes(saved.version) || !Array.isArray(saved.subjects)) {
       return emptyState();
     }
 
@@ -122,6 +136,7 @@
         dockSplitIndex: Number.isInteger(saved.dockSplitIndex)
           ? Math.max(0, Math.min(saved.dockSplitIndex, subjects.length))
           : Math.min(5, subjects.length),
+        settings: Scheduler.normalizeSettings(saved.settings),
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizedState));
       return normalizedState;
@@ -217,14 +232,32 @@
     return {
       id: typeof subject.id === "string" && subject.id ? subject.id : createId(),
       name,
-      classDay:
-        Number.isInteger(subject.classDay) && subject.classDay >= 0 && subject.classDay <= 6
-          ? subject.classDay
-          : null,
-      examDate: Scheduler.parseLocalDate(subject.examDate) ? subject.examDate : null,
+      active: subject.active !== false,
+      baseWeight: Math.max(1, Math.min(100, Number(subject.baseWeight) || 1)),
+      classDays: Array.from(new Set(
+        (Array.isArray(subject.classDays) ? subject.classDays : [subject.classDay])
+          .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
+      )).sort(),
+      evaluations: normalizeEvaluations(subject.evaluations, subject.examDate),
       createdAt: Number.isNaN(createdAt.getTime()) ? new Date().toISOString() : createdAt.toISOString(),
       color: normalizeColor(subject.color, index),
     };
+  }
+
+  function normalizeEvaluations(evaluations, legacyExamDate = null) {
+    const source = Array.isArray(evaluations)
+      ? evaluations
+      : Scheduler.parseLocalDate(legacyExamDate)
+        ? [{ id: createId(), name: "Examen", date: legacyExamDate }]
+        : [];
+    const ids = new Set();
+    return source.map((evaluation) => {
+      if (!Scheduler.parseLocalDate(evaluation?.date)) return null;
+      let id = typeof evaluation.id === "string" && evaluation.id ? evaluation.id : createId();
+      if (ids.has(id)) id = createId();
+      ids.add(id);
+      return { id, name: normalizeName(evaluation.name).slice(0, 60), date: evaluation.date };
+    }).filter(Boolean);
   }
 
   function normalizeColor(color, index) {
@@ -256,10 +289,8 @@
   }
 
   function ringMatchesWeights(ring, subjects) {
-    if (!subjects.length) return ring.length === 0;
-    const desired = new Map(
-      subjects.map((subject) => [subject.id, Scheduler.calculateWeight(subject).tickets]),
-    );
+    const schedule = Scheduler.calculateSchedule(subjects, state.settings);
+    const desired = new Map(schedule.allocations.filter((item) => item.tickets > 0).map((item) => [item.id, item.tickets]));
     const actual = new Map();
     for (const id of ring) actual.set(id, (actual.get(id) || 0) + 1);
     if (actual.size !== desired.size) return false;
@@ -267,7 +298,7 @@
   }
 
   function ensureFreshRing(force = false) {
-    const signature = Scheduler.weightSignature(state.subjects);
+    const signature = Scheduler.weightSignature(state.subjects, state.settings);
     const shouldRebuild =
       force ||
       signature !== state.weightSignature ||
@@ -277,6 +308,7 @@
 
     const preferredHead = state.ring[0] || state.subjects[0]?.id || null;
     state.ring = Scheduler.buildRing(state.subjects, new Date(), {
+      settings: state.settings,
       preferredHead,
       preferredOrder: uniqueOrder(state.ring),
     });
@@ -294,6 +326,7 @@
     ensureFreshRing();
     elements.queue.replaceChildren();
     renderSubjectDock();
+    renderMode();
     if (elements.detailDialog.open) renderDetailMetrics();
 
     if (!state.ring.length) return;
@@ -325,6 +358,20 @@
     }
   }
 
+  function currentSchedule() {
+    return Scheduler.calculateSchedule(state.subjects, state.settings, new Date(), {
+      preferredHead: state.ring[0] || null,
+      preferredOrder: uniqueOrder(state.ring),
+    });
+  }
+
+  function renderMode() {
+    const labels = { regular: "Regular", alert: "Alerta", critical: "Crítico" };
+    const mode = currentSchedule().mode;
+    elements.modeBadge.textContent = labels[mode];
+    elements.modeBadge.dataset.mode = mode;
+  }
+
   function renderSubjectDock() {
     elements.subjectDockList.replaceChildren();
     if (state.subjects.length === 0) document.body.classList.remove("dock-visible");
@@ -332,6 +379,7 @@
       const card = document.createElement("button");
       card.type = "button";
       card.className = "subject-dock-card";
+      if (!subject.active) card.classList.add("is-inactive");
       if (index === state.dockSplitIndex) card.classList.add("starts-right-group");
       card.draggable = true;
       card.dataset.subjectId = subject.id;
@@ -444,9 +492,15 @@
     elements.detailName.addEventListener("blur", saveSubjectDetails);
     elements.detailName.addEventListener("keydown", handleDetailNameKeydown);
     elements.deleteButton.addEventListener("click", deleteSelectedSubject);
-    elements.calendarButton.addEventListener("click", openDatePicker);
-    elements.detailClassDay.addEventListener("change", saveSubjectDetails);
-    elements.detailExamDate.addEventListener("change", saveSubjectDetails);
+    elements.detailBaseWeight.addEventListener("change", saveSubjectDetails);
+    elements.detailActive.addEventListener("change", saveSubjectDetails);
+    elements.classDayInputs.forEach((input) => input.addEventListener("change", saveSubjectDetails));
+    elements.addEvaluationButton.addEventListener("click", addEvaluation);
+    elements.evaluationList.addEventListener("change", saveEvaluations);
+    elements.evaluationList.addEventListener("click", handleEvaluationAction);
+    elements.settingsButton.addEventListener("click", openSettings);
+    elements.settingsForm.addEventListener("submit", saveSettings);
+    elements.cancelSettings.addEventListener("click", () => elements.settingsDialog.close());
     elements.detailColor.addEventListener("change", commitColorPickerValue);
     elements.colorButton.addEventListener("click", toggleColorPicker);
     elements.colorPicker.addEventListener("input", handleColorPickerInput);
@@ -472,6 +526,7 @@
 
     elements.addDialog.addEventListener("click", closeOnBackdrop);
     elements.detailDialog.addEventListener("click", closeOnBackdrop);
+    elements.settingsDialog.addEventListener("click", closeOnBackdrop);
     elements.addDialog.addEventListener("close", () => {
       elements.addError.textContent = "";
       elements.addForm.reset();
@@ -528,10 +583,12 @@
     const subject = {
       id: createId(),
       name,
-      classDay: null,
-      examDate: null,
       createdAt: new Date().toISOString(),
       color: nextColor(),
+      active: true,
+      baseWeight: 1,
+      classDays: [],
+      evaluations: [],
     };
     const priorHead = state.ring[0] || null;
     const extendLeftGroup =
@@ -539,7 +596,7 @@
     state.subjects.push(subject);
     if (extendLeftGroup) state.dockSplitIndex += 1;
     state.ring.push(subject.id);
-    state.weightSignature = Scheduler.weightSignature(state.subjects);
+    state.weightSignature = Scheduler.weightSignature(state.subjects, state.settings);
 
     if (!ringMatchesWeights(state.ring, state.subjects)) {
       state.ring = Scheduler.buildRing(state.subjects, new Date(), {
@@ -588,8 +645,10 @@
     if (!subject || elements.detailDialog.open) return;
     elements.detailId.value = subject.id;
     elements.detailName.value = subject.name;
-    elements.detailClassDay.value = subject.classDay === null ? "" : String(subject.classDay);
-    elements.detailExamDate.value = subject.examDate || "";
+    elements.detailBaseWeight.value = String(subject.baseWeight);
+    elements.detailActive.checked = subject.active;
+    elements.classDayInputs.forEach((input) => { input.checked = subject.classDays.includes(Number(input.value)); });
+    renderEvaluations(subject);
     elements.detailColor.value = subject.color;
     updateColorButton(subject.color);
     renderDetailMetrics(subject);
@@ -605,6 +664,7 @@
       return;
     }
 
+    renderScheduleMetrics(subject);
     const appearances = state.ring.reduce(
       (total, id) => total + (id === subject.id ? 1 : 0),
       0,
@@ -616,6 +676,91 @@
     elements.detailNextTurn.textContent = Number.isInteger(distance)
       ? `${distance} ${distance === 1 ? "turno" : "turnos"}`
       : "—";
+  }
+
+  function renderScheduleMetrics(subject) {
+    const schedule = currentSchedule();
+    const allocation = schedule.allocations.find((item) => item.id === subject.id);
+    const labels = { regular: "Regular", alert: "Alerta", critical: "Crítico" };
+    elements.detailMode.textContent = `Modo: ${labels[schedule.mode]}`;
+    elements.detailWeight.textContent = allocation
+      ? `Peso: ${allocation.baseWeight} → ${allocation.finalWeight.toFixed(2)}`
+      : "Materia inactiva";
+    elements.detailReason.textContent = allocation?.reason || "No participa de la planificación";
+  }
+
+  function renderEvaluations(subject) {
+    elements.evaluationList.replaceChildren();
+    for (const evaluation of subject.evaluations) {
+      const row = document.createElement("div");
+      row.className = "evaluation-row";
+      row.dataset.evaluationId = evaluation.id;
+      row.innerHTML = '<input class="evaluation-name" type="text" maxlength="60" aria-label="Nombre"><input class="evaluation-date" type="date" required aria-label="Fecha"><button class="remove-evaluation" type="button" aria-label="Eliminar">×</button>';
+      row.querySelector(".evaluation-name").value = evaluation.name;
+      row.querySelector(".evaluation-date").value = evaluation.date;
+      elements.evaluationList.append(row);
+    }
+  }
+
+  function addEvaluation() {
+    const subject = subjectById(elements.detailId.value);
+    if (!subject) return;
+    const date = new Date();
+    date.setDate(date.getDate() + 14);
+    const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    subject.evaluations.push({ id: createId(), name: "", date: value });
+    rebuildRing();
+    renderEvaluations(subject);
+    elements.evaluationList.lastElementChild?.querySelector(".evaluation-name")?.focus();
+  }
+
+  function handleEvaluationAction(event) {
+    const row = event.target.closest(".evaluation-row");
+    if (!row || !event.target.closest(".remove-evaluation")) return;
+    const subject = subjectById(elements.detailId.value);
+    if (!subject) return;
+    subject.evaluations = subject.evaluations.filter((item) => item.id !== row.dataset.evaluationId);
+    rebuildRing();
+    renderEvaluations(subject);
+    render();
+  }
+
+  function saveEvaluations() {
+    const subject = subjectById(elements.detailId.value);
+    if (!subject) return;
+    const evaluations = [...elements.evaluationList.querySelectorAll(".evaluation-row")].map((row) => ({
+      id: row.dataset.evaluationId,
+      name: normalizeName(row.querySelector(".evaluation-name").value).slice(0, 60),
+      date: row.querySelector(".evaluation-date").value,
+    }));
+    if (evaluations.some((item) => !Scheduler.parseLocalDate(item.date))) {
+      elements.detailError.textContent = "Cada evaluación necesita una fecha válida.";
+      return;
+    }
+    subject.evaluations = evaluations;
+    rebuildRing();
+    render();
+  }
+
+  function openSettings() {
+    elements.cycleSize.value = String(state.settings.cycleSize);
+    elements.urgencyK.value = String(state.settings.urgencyK);
+    elements.settingsError.textContent = "";
+    elements.settingsDialog.showModal();
+  }
+
+  function saveSettings(event) {
+    event.preventDefault();
+    const cycleSize = Number(elements.cycleSize.value);
+    const urgencyK = Number(elements.urgencyK.value);
+    if (!Number.isInteger(cycleSize) || cycleSize < 1 || cycleSize > 100 || !Number.isFinite(urgencyK) || urgencyK < 0 || urgencyK > 100) {
+      elements.settingsError.textContent = "Usá 1–100 turnos y una agresividad entre 0 y 100.";
+      return;
+    }
+    state.settings = { cycleSize, urgencyK };
+    rebuildRing();
+    elements.settingsDialog.close();
+    render();
   }
 
   function toggleColorPicker() {
@@ -831,13 +976,21 @@
       return false;
     }
 
-    const nextClassDay = elements.detailClassDay.value === "" ? null : Number(elements.detailClassDay.value);
-    const nextExamDate = elements.detailExamDate.value || null;
+    const baseWeight = Number(elements.detailBaseWeight.value);
+    if (!Number.isInteger(baseWeight) || baseWeight < 1 || baseWeight > 100) {
+      elements.detailError.textContent = "El peso base debe ser un entero entre 1 y 100.";
+      return false;
+    }
+    const classDays = elements.classDayInputs
+      .filter((input) => input.checked)
+      .map((input) => Number(input.value))
+      .sort();
     const nextColor = normalizeColor(elements.detailColor.value, 0);
-    const scheduleChanged = subject.classDay !== nextClassDay || subject.examDate !== nextExamDate;
+    const scheduleChanged = subject.baseWeight !== baseWeight || subject.active !== elements.detailActive.checked;
     subject.name = name;
-    subject.classDay = nextClassDay;
-    subject.examDate = nextExamDate;
+    subject.baseWeight = baseWeight;
+    subject.active = elements.detailActive.checked;
+    subject.classDays = classDays;
     subject.color = nextColor;
     elements.detailError.textContent = "";
     if (scheduleChanged) rebuildRing();
@@ -860,19 +1013,6 @@
     rebuildRing();
     elements.detailDialog.close();
     render();
-  }
-
-  function openDatePicker() {
-    try {
-      if (typeof elements.detailExamDate.showPicker === "function") {
-        elements.detailExamDate.showPicker();
-      } else {
-        elements.detailExamDate.focus();
-        elements.detailExamDate.click();
-      }
-    } catch {
-      elements.detailExamDate.focus();
-    }
   }
 
   function handlePointerDown(event) {

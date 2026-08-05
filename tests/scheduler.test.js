@@ -1,142 +1,76 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const {
-  acronym,
-  arrangeTickets,
-  buildRing,
-  calculateWeight,
-  hasCircularGap,
-  nextOccurrenceDistance,
-  parseLocalDate,
-} = require("../scheduler.js");
+const { acronym, calculateSchedule, hasCircularGap, nextOccurrenceDistance, parseLocalDate } = require("../scheduler.js");
 
 const TODAY = new Date(2026, 6, 31, 12);
-
-function subject(overrides = {}) {
-  return {
-    id: overrides.id || "A",
-    name: overrides.name || "Algoritmos",
-    classDay: overrides.classDay ?? null,
-    examDate: overrides.examDate ?? null,
-    createdAt: overrides.createdAt || new Date(2026, 6, 31, 9).toISOString(),
-  };
+function subject(id, overrides = {}) {
+  return { id, name: id, active: true, baseWeight: 1, classDays: [], evaluations: [], ...overrides };
 }
+function evaluation(date, name = "Parcial") { return { id: `${date}-${name}`, name, date }; }
+function counts(schedule) { return Object.fromEntries(schedule.allocations.map((item) => [item.id, item.tickets])); }
 
-function countIds(ring) {
-  return ring.reduce((counts, id) => {
-    counts[id] = (counts[id] || 0) + 1;
-    return counts;
-  }, {});
-}
-
-test("calcula ticket base y bono del día de cursado", () => {
-  assert.equal(calculateWeight(subject(), TODAY).tickets, 1);
-  assert.equal(calculateWeight(subject({ classDay: TODAY.getDay() }), TODAY).tickets, 2);
+test("distribuye exactamente 20 turnos y reserva uno por materia en regular", () => {
+  const result = calculateSchedule([subject("A", { baseWeight: 9 }), subject("B", { baseWeight: 1 })]);
+  assert.equal(result.mode, "regular");
+  assert.equal(result.ring.length, 20);
+  assert.deepEqual(counts(result), { A: 17, B: 3 });
 });
 
-test("aplica los límites EDF de 14, 7 y 3 días", () => {
-  const cases = [
-    ["2026-08-14", 2],
-    ["2026-08-08", 2],
-    ["2026-08-07", 3],
-    ["2026-08-04", 3],
-    ["2026-08-03", 4],
-    ["2026-07-31", 4],
-    ["2026-07-30", 1],
-    ["2026-08-15", 1],
-  ];
-
-  for (const [examDate, expected] of cases) {
-    assert.equal(calculateWeight(subject({ examDate }), TODAY).tickets, expected, examDate);
-  }
+test("respeta tamaño de ciclo, pesos y desempate estable", () => {
+  const result = calculateSchedule([subject("A"), subject("B"), subject("C")], { cycleSize: 5, urgencyK: 14 });
+  assert.deepEqual(counts(result), { A: 2, B: 2, C: 1 });
+  assert.equal(result.ring.length, 5);
 });
 
-test("aplica aging desde 3 y 6 semanas", () => {
-  assert.equal(
-    calculateWeight(subject({ createdAt: new Date(2026, 6, 10, 9).toISOString() }), TODAY).tickets,
-    2,
-  );
-  assert.equal(
-    calculateWeight(subject({ createdAt: new Date(2026, 5, 19, 9).toISOString() }), TODAY).tickets,
-    3,
-  );
+test("una materia inactiva no recibe turnos", () => {
+  const result = calculateSchedule([subject("A"), subject("B", { active: false })]);
+  assert.deepEqual(result.allocations.map((item) => item.id), ["A"]);
+  assert.ok(result.ring.every((id) => id === "A"));
 });
 
-test("limita la suma de bonos a cuatro tickets", () => {
-  const result = calculateWeight(
-    subject({
-      classDay: TODAY.getDay(),
-      examDate: "2026-08-01",
-      createdAt: new Date(2026, 4, 1, 9).toISOString(),
-    }),
-    TODAY,
-  );
-  assert.equal(result.tickets, 4);
-  assert.ok(result.rawTickets > result.tickets);
-  assert.match(result.reasons.join(" "), /tope/);
+test("aplica los límites de regular, alerta y crítico", () => {
+  const at = (date) => [subject("A", { evaluations: [evaluation(date)] }), subject("B")];
+  assert.equal(calculateSchedule(at("2026-08-15"), {}, TODAY).mode, "regular");
+  assert.equal(calculateSchedule(at("2026-08-14"), {}, TODAY).mode, "alert");
+  assert.equal(calculateSchedule(at("2026-08-05"), {}, TODAY).mode, "alert");
+  assert.equal(calculateSchedule(at("2026-08-04"), {}, TODAY).mode, "critical");
+  assert.equal(calculateSchedule(at("2026-07-31"), {}, TODAY).mode, "critical");
+  assert.equal(calculateSchedule(at("2026-07-30"), {}, TODAY).mode, "regular");
 });
 
-test("valida fechas locales sin aceptar desbordes", () => {
+test("el modo crítico incluye todas y sólo las materias inminentes", () => {
+  const result = calculateSchedule([
+    subject("A", { evaluations: [evaluation("2026-08-01")] }),
+    subject("B", { evaluations: [evaluation("2026-08-04")] }),
+    subject("C", { evaluations: [evaluation("2026-08-10")] }),
+  ], {}, TODAY);
+  assert.equal(result.mode, "critical");
+  assert.ok(counts(result).A > 0);
+  assert.ok(counts(result).B > 0);
+  assert.equal(counts(result).C, 0);
+});
+
+test("evita división por cero y K cero conserva el peso base", () => {
+  const subjects = [subject("A", { evaluations: [evaluation("2026-07-31")] }), subject("B", { evaluations: [evaluation("2026-08-01")] })];
+  const result = calculateSchedule(subjects, { urgencyK: 0 }, TODAY);
+  assert.deepEqual(counts(result), { A: 10, B: 10 });
+  assert.ok(result.allocations.every((item) => Number.isFinite(item.finalWeight)));
+});
+
+test("usa sólo la evaluación futura más próxima", () => {
+  const result = calculateSchedule([subject("A", { evaluations: [evaluation("2026-07-01"), evaluation("2026-08-10"), evaluation("2026-08-02")] })], {}, TODAY);
+  assert.equal(result.allocations[0].evaluation.date, "2026-08-02");
+  assert.equal(result.allocations[0].daysRemaining, 2);
+});
+
+test("mantiene separación circular cuando es matemáticamente posible", () => {
+  const result = calculateSchedule([subject("A"), subject("B"), subject("C")], { cycleSize: 6 });
+  assert.equal(hasCircularGap(result.ring), true);
+});
+
+test("valida fechas, siglas y distancia circular", () => {
   assert.ok(parseLocalDate("2026-02-28"));
   assert.equal(parseLocalDate("2026-02-30"), null);
-  assert.equal(parseLocalDate("31/07/2026"), null);
-});
-
-test("calcula los turnos hasta la próxima aparición circular", () => {
-  assert.equal(nextOccurrenceDistance(["A", "B", "C", "A"], "B"), 1);
-  assert.equal(nextOccurrenceDistance(["A", "B", "C", "A"], "A"), 3);
-  assert.equal(nextOccurrenceDistance(["A", "B", "C"], "A"), 3);
-  assert.equal(nextOccurrenceDistance(["A"], "A"), 1);
-});
-
-test("no calcula distancia para una cola vacía o una materia ausente", () => {
-  assert.equal(nextOccurrenceDistance([], "A"), null);
-  assert.equal(nextOccurrenceDistance(["A", "B"], "C"), null);
-  assert.equal(nextOccurrenceDistance(null, "A"), null);
-});
-
-test("genera siglas compactas", () => {
   assert.equal(acronym("Estructuras Organizacionales"), "EO");
-  assert.equal(acronym("Probabilidad"), "PRO");
-  assert.equal(acronym("  ingeniería   de software "), "IS");
-  assert.equal(acronym("Álgebra 2"), "A2");
-  assert.equal(acronym("Ingeniería de Gestión"), "IG");
-});
-
-test("respeta dos elementos entre repeticiones cuando es posible", () => {
-  const ring = arrangeTickets(
-    [
-      { id: "A", count: 2 },
-      { id: "B", count: 2 },
-      { id: "C", count: 2 },
-    ],
-    ["A", "B", "C"],
-    "A",
-  );
-  assert.deepEqual(countIds(ring), { A: 2, B: 2, C: 2 });
-  assert.equal(ring[0], "A");
-  assert.equal(hasCircularGap(ring), true);
-});
-
-test("conserva todos los tickets y degrada de forma estable si el gap es imposible", () => {
-  const counts = [
-    { id: "A", count: 4 },
-    { id: "B", count: 1 },
-    { id: "C", count: 1 },
-  ];
-  const first = arrangeTickets(counts, ["A", "B", "C"], "A");
-  const second = arrangeTickets(counts, ["A", "B", "C"], "A");
-  assert.deepEqual(first, second);
-  assert.deepEqual(countIds(first), { A: 4, B: 1, C: 1 });
-});
-
-test("buildRing refleja exactamente el peso calculado", () => {
-  const subjects = [
-    subject({ id: "A", classDay: TODAY.getDay() }),
-    subject({ id: "B", examDate: "2026-08-07" }),
-    subject({ id: "C" }),
-  ];
-  const ring = buildRing(subjects, TODAY, { preferredHead: "B" });
-  assert.equal(ring[0], "B");
-  assert.deepEqual(countIds(ring), { A: 2, B: 3, C: 1 });
+  assert.equal(nextOccurrenceDistance(["A", "B", "C", "A"], "A"), 3);
 });

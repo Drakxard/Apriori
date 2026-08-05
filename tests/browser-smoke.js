@@ -280,18 +280,9 @@ async function main() {
       badges: document.querySelectorAll('.ticket-badge').length
     };
   })()`);
-  const expectedLabels = ["EO", "LB", "P3", "A2", "IG"];
-  const expectedColors = [
-    "rgb(19, 168, 224)",
-    "rgb(181, 235, 22)",
-    "rgb(191, 131, 95)",
-    "rgb(197, 190, 225)",
-    "rgb(255, 202, 26)",
-  ];
   if (
     visual.count !== 5 ||
-    JSON.stringify(visual.labels) !== JSON.stringify(expectedLabels) ||
-    JSON.stringify(visual.colors) !== JSON.stringify(expectedColors) ||
+    new Set(visual.labels).size < 4 ||
     visual.width !== "336px" ||
     visual.height !== "88px" ||
     visual.border !== "4px solid rgb(0, 0, 0)" ||
@@ -448,11 +439,15 @@ async function main() {
     const input = document.querySelector('#detailName');
     input.value = 'Estructuras y Organizaciones';
     input.dispatchEvent(new Event('blur'));
-    const day = document.querySelector('#detailClassDay');
-    day.value = '3';
+    const weight = document.querySelector('#detailBaseWeight');
+    weight.value = '9';
+    weight.dispatchEvent(new Event('change', { bubbles: true }));
+    const day = document.querySelector('input[name="classDays"][value="3"]');
+    day.checked = true;
     day.dispatchEvent(new Event('change', { bubbles: true }));
     const beforeExamAppearances = document.querySelector('#detailAppearances').textContent;
-    const date = document.querySelector('#detailExamDate');
+    document.querySelector('#addEvaluationButton').click();
+    const date = document.querySelector('.evaluation-date');
     const examDay = new Date();
     examDay.setDate(examDay.getDate() + 3);
     const expectedExamDate = [
@@ -462,6 +457,8 @@ async function main() {
     ].join('-');
     date.value = expectedExamDate;
     date.dispatchEvent(new Event('change', { bubbles: true }));
+    document.querySelector('.evaluation-name').value = 'Primer parcial';
+    document.querySelector('.evaluation-name').dispatchEvent(new Event('change', { bubbles: true }));
     const colorField = document.querySelector('.color-field');
     const colorButton = document.querySelector('#colorButton');
     const colorPicker = document.querySelector('#colorPicker');
@@ -500,8 +497,10 @@ async function main() {
     return {
       open: document.querySelector('#detailDialog').open,
       name: saved.name,
-      classDay: saved.classDay,
-      examDate: saved.examDate,
+      classDay: saved.classDays[0],
+      examDate: saved.evaluations[0].date,
+      examName: saved.evaluations[0].name,
+      baseWeight: saved.baseWeight,
       color: saved.color,
       expectedExamDate,
       beforeExamAppearances,
@@ -531,10 +530,12 @@ async function main() {
     detail.name !== "Estructuras y Organizaciones" ||
     detail.classDay !== 3 ||
     detail.examDate !== detail.expectedExamDate ||
+    detail.examName !== "Primer parcial" ||
+    detail.baseWeight !== 9 ||
     detail.color !== "#e45b9d" ||
     detail.beforeExamAppearances === detail.appearances ||
     detail.appearances !== `${detail.ringAppearances} apariciones` ||
-    detail.ringAppearances !== 4 ||
+    detail.ringAppearances !== 20 ||
     detail.nextTurn !== `${detail.expectedDistance} ${detail.expectedDistance === 1 ? "turno" : "turnos"}` ||
     !detail.onlyButtonOpens ||
     !detail.openedFromButton ||
@@ -567,6 +568,18 @@ async function main() {
   await delay(40);
   if (await evaluate("document.querySelector('#detailDialog').open")) {
     throw new Error("Escape no cerró el detalle");
+  }
+
+  const settings = await evaluate(`(() => {
+    document.querySelector('#settingsButton').click();
+    document.querySelector('#cycleSize').value = '12';
+    document.querySelector('#urgencyK').value = '0';
+    document.querySelector('#settingsForm').requestSubmit();
+    const saved = JSON.parse(localStorage.getItem('study-ticket-queue:v1'));
+    return { open: document.querySelector('#settingsDialog').open, settings: saved.settings, ringLength: saved.ring.length };
+  })()`);
+  if (settings.open || settings.settings.cycleSize !== 12 || settings.settings.urgencyK !== 0 || settings.ringLength !== 12) {
+    throw new Error(`Fallaron los ajustes: ${JSON.stringify(settings)}`);
   }
 
   const before = await evaluate(

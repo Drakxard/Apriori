@@ -13,6 +13,10 @@
   </head>
   <body class="storage-blocked">
     <main class="app-shell">
+      <div class="planner-status">
+        <button id="settingsButton" class="settings-button" type="button">Ajustes</button>
+        <output id="modeBadge" class="mode-badge">Regular</output>
+      </div>
       <section class="queue-section" aria-label="Cola circular de materias">
         <div
           class="queue"
@@ -69,36 +73,25 @@
           <input id="detailName" name="name" type="text" maxlength="60" required />
         </label>
 
-        <label class="field">
-          <span>D&iacute;a de cursado</span>
-          <select id="detailClassDay" name="classDay">
-            <option value="">Sin definir</option>
-            <option value="1">Lunes</option>
-            <option value="2">Martes</option>
-            <option value="3">Mi&eacute;rcoles</option>
-            <option value="4">Jueves</option>
-            <option value="5">Viernes</option>
-            <option value="6">S&aacute;bado</option>
-            <option value="0">Domingo</option>
-          </select>
-        </label>
+        <div class="planner-fields">
+          <label class="field"><span>Peso base</span><input id="detailBaseWeight" type="number" min="1" max="100" required /></label>
+          <label class="check-field"><input id="detailActive" type="checkbox" /> Activa</label>
+        </div>
 
-        <label class="field">
-          <span>Examen</span>
-          <span class="date-control">
-            <input id="detailExamDate" name="examDate" type="date" />
-            <button
-              id="calendarButton"
-              class="calendar-button"
-              type="button"
-              aria-label="Abrir calendario"
-            >
-              <svg aria-hidden="true" viewBox="0 0 24 24">
-                <path d="M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z" />
-              </svg>
-            </button>
-          </span>
-        </label>
+        <fieldset class="class-days"><legend>D&iacute;as de cursado</legend>
+          <label><input type="checkbox" name="classDays" value="1" /> Lu</label>
+          <label><input type="checkbox" name="classDays" value="2" /> Ma</label>
+          <label><input type="checkbox" name="classDays" value="3" /> Mi</label>
+          <label><input type="checkbox" name="classDays" value="4" /> Ju</label>
+          <label><input type="checkbox" name="classDays" value="5" /> Vi</label>
+          <label><input type="checkbox" name="classDays" value="6" /> S&aacute;</label>
+          <label><input type="checkbox" name="classDays" value="0" /> Do</label>
+        </fieldset>
+
+        <section class="evaluations-section" aria-labelledby="evaluationsTitle">
+          <div class="section-heading"><span id="evaluationsTitle">Evaluaciones</span><button id="addEvaluationButton" type="button">+ Agregar</button></div>
+          <div id="evaluationList" class="evaluation-list"></div>
+        </section>
 
         <div class="detail-summary">
           <div class="field color-field">
@@ -161,11 +154,27 @@
           </div>
         </div>
 
+        <div class="schedule-explanation">
+          <output id="detailMode"></output>
+          <output id="detailWeight"></output>
+          <output id="detailReason"></output>
+        </div>
+
         <p class="field-error" id="detailError" role="alert"></p>
 
         <button class="delete-button" id="deleteButton" type="button">
           Eliminar
         </button>
+      </form>
+    </dialog>
+
+    <dialog class="settings-panel" id="settingsDialog" aria-labelledby="settingsTitle">
+      <form id="settingsForm" method="dialog" novalidate>
+        <h2 id="settingsTitle">Ajustes del planificador</h2>
+        <label class="field"><span>Turnos por ciclo</span><input id="cycleSize" type="number" min="1" max="100" required /></label>
+        <label class="field"><span>Agresividad (K)</span><input id="urgencyK" type="number" min="0" max="100" step="0.1" required /></label>
+        <p class="field-error" id="settingsError" role="alert"></p>
+        <div class="settings-actions"><button type="submit">Guardar</button><button id="cancelSettings" type="button">Cancelar</button></div>
       </form>
     </dialog>
 

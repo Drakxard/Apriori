@@ -139,6 +139,20 @@ test("el archivo existente prevalece sobre el espejo del navegador", async () =>
   assert.deepEqual(JSON.parse(local.getItem(MIRROR_KEY)), folderState);
 });
 
+test("acepta el estado v2 del planificador genérico", async () => {
+  const value = {
+    version: 2,
+    settings: { cycleSize: 20, urgencyK: 14 },
+    subjects: [{ id: "A", name: "Genérica", active: true, baseWeight: 1, classDays: [1, 3], evaluations: [] }],
+    ring: Array(20).fill("A"),
+    weightSignature: "",
+  };
+  const directory = createDirectory({ files: { [FILE_NAME]: documentFor(value) } });
+  const result = await makeStorage({ directory }).initialize(state());
+  assert.equal(result.status, "ready");
+  assert.deepEqual(result.state, value);
+});
+
 test("reutiliza automáticamente un handle con permiso concedido", async () => {
   const folderState = state("Datos");
   const directory = createDirectory({ files: { [FILE_NAME]: documentFor(folderState) } });

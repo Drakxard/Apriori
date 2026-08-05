@@ -167,7 +167,7 @@
         parsed.version !== FILE_VERSION ||
         !parsed.state ||
         typeof parsed.state !== "object" ||
-        parsed.state.version !== 1 ||
+        ![1, 2].includes(parsed.state.version) ||
         !Array.isArray(parsed.state.subjects) ||
         !Array.isArray(parsed.state.ring)
       ) {
