@@ -722,7 +722,6 @@
       await folderStorage.saveModule(module.id, html);
       subject.module = module;
       await folderStorage.save(state);
-      elements.moduleDialog.close();
       openModuleHtml(html);
     } catch (error) {
       if (subject.module?.id === module.id) subject.module = null;
