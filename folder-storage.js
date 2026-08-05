@@ -167,7 +167,7 @@
         parsed.version !== FILE_VERSION ||
         !parsed.state ||
         typeof parsed.state !== "object" ||
-        ![1, 2].includes(parsed.state.version) ||
+        ![1, 2, 3].includes(parsed.state.version) ||
         !Array.isArray(parsed.state.subjects) ||
         !Array.isArray(parsed.state.ring)
       ) {
@@ -353,11 +353,57 @@
       return operation;
     }
 
+    function moduleFileName(moduleId) {
+      const id = String(moduleId || "");
+      if (!/^[a-z0-9][a-z0-9-]{0,99}$/i.test(id)) {
+        throw new TypeError("El identificador del módulo no es válido");
+      }
+      return `apriori-module-${id}.html`;
+    }
+
+    function saveModule(moduleId, html) {
+      if (!ready || !directoryHandle) {
+        return Promise.reject(new DOMException("La carpeta no está disponible", "NotAllowedError"));
+      }
+      if (typeof html !== "string" || !html.trim()) {
+        return Promise.reject(new TypeError("El módulo descargado está vacío"));
+      }
+      const operation = writeChain
+        .catch(() => undefined)
+        .then(async () => {
+          const fileHandle = await directoryHandle.getFileHandle(moduleFileName(moduleId), { create: true });
+          const writable = await fileHandle.createWritable();
+          try {
+            await writable.write(html);
+            await writable.close();
+          } catch (error) {
+            try { await writable.abort(); } catch {}
+            throw error;
+          }
+        })
+        .catch((error) => {
+          ready = false;
+          throw error;
+        });
+      writeChain = operation;
+      return operation;
+    }
+
+    async function readModule(moduleId) {
+      if (!ready || !directoryHandle) {
+        throw new DOMException("La carpeta no está disponible", "NotAllowedError");
+      }
+      const fileHandle = await directoryHandle.getFileHandle(moduleFileName(moduleId));
+      return (await fileHandle.getFile()).text();
+    }
+
     return {
       initialize,
       selectDirectory,
       authorize,
       save,
+      saveModule,
+      readModule,
       get directoryName() {
         return directoryHandle?.name || null;
       },

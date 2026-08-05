@@ -441,6 +441,119 @@ dialog::backdrop {
   white-space: nowrap;
 }
 
+.assigned-module {
+  min-height: 42px;
+  padding: 0 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 2px solid #000;
+  font-size: 14px;
+}
+
+.assigned-module button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.module-panel {
+  width: min(calc(100vw - 32px), 420px);
+  padding: 18px;
+  border: 4px solid #000;
+}
+
+.module-search-content {
+  display: grid;
+  gap: 10px;
+}
+
+#moduleSearch {
+  width: 100%;
+  height: 46px;
+  padding: 0 9px;
+  border: 2px solid #000;
+  border-radius: 0;
+  background: #fff;
+}
+
+.module-results {
+  display: grid;
+  gap: 7px;
+}
+
+.module-result {
+  position: relative;
+  min-height: 46px;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 2px solid #000;
+}
+
+.module-result button {
+  padding: 5px 9px;
+  border: 2px solid #000;
+  border-radius: 0;
+  background: #fff;
+  cursor: pointer;
+}
+
+.module-result.is-downloading {
+  overflow: hidden;
+}
+
+.module-result.is-downloading::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  content: "";
+  background: var(--download-color, #000);
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: module-download-progress 1.15s ease-in-out infinite;
+}
+
+.module-result.is-downloading > span {
+  visibility: hidden;
+}
+
+.module-result.is-downloading button {
+  position: absolute;
+  inset: 0;
+  width: 3ch;
+  height: 1.2em;
+  margin: auto;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  cursor: wait;
+  letter-spacing: 0.18em;
+  animation: module-download-dots 1.15s steps(4, end) infinite;
+}
+
+@keyframes module-download-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes module-download-dots {
+  0% { clip-path: inset(0 100% 0 0); }
+  25% { clip-path: inset(0 66% 0 0); }
+  50% { clip-path: inset(0 33% 0 0); }
+  75%, 100% { clip-path: inset(0 0 0 0); }
+}
+
 .date-control {
   position: relative;
   display: block;

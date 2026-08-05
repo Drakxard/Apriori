@@ -72,6 +72,11 @@
           <button id="weightCycleButton" class="weight-cycle-button" type="button" aria-label="Cambiar prioridad"></button>
         </div>
 
+        <div class="assigned-module" id="assignedModule" hidden>
+          <span id="assignedModuleName"></span>
+          <button id="removeModuleButton" type="button" aria-label="Quitar módulo asignado">×</button>
+        </div>
+
         <section class="evaluations-section" aria-labelledby="evaluationsTitle">
           <div class="section-heading"><span id="evaluationsTitle">Fecha de examen</span><button id="addEvaluationButton" type="button">+ Agregar fecha</button></div>
           <div id="evaluationList" class="evaluation-list"></div>
@@ -141,9 +146,20 @@
         <p class="field-error" id="detailError" role="alert"></p>
 
         <button class="delete-button" id="deleteButton" type="button">
-          Eliminar
+          Eliminar materia
         </button>
       </form>
+    </dialog>
+
+    <dialog class="module-panel" id="moduleDialog" aria-labelledby="moduleSearchLabel">
+      <div class="module-search-content">
+        <label class="field" id="moduleSearchLabel" for="moduleSearch">
+          <span>Buscar módulo</span>
+        </label>
+        <input id="moduleSearch" type="search" autocomplete="off" placeholder="Escribí para buscar" />
+        <div id="moduleResults" class="module-results" aria-live="polite"></div>
+        <p class="field-error" id="moduleError" role="alert"></p>
+      </div>
     </dialog>
 
     <dialog class="settings-panel" id="settingsDialog" aria-labelledby="settingsTitle">

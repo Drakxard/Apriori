@@ -272,3 +272,15 @@ test("mantiene dirty cuando una escritura falla", async () => {
   assert.equal(JSON.parse(local.getItem(SYNC_KEY)).dirty, true);
   assert.deepEqual(JSON.parse(local.getItem(MIRROR_KEY)), state("Cambio"));
 });
+
+test("guarda y recupera la copia HTML de un módulo", async () => {
+  const directory = createDirectory();
+  const storage = makeStorage({ directory });
+  assert.equal((await storage.initialize(state())).status, "ready");
+  await storage.saveModule("ingles-vocabulario", "<!doctype html><title>Inglés</title>");
+  assert.equal(
+    await storage.readModule("ingles-vocabulario"),
+    "<!doctype html><title>Inglés</title>",
+  );
+  await assert.rejects(storage.saveModule("../inseguro", "x"), TypeError);
+});

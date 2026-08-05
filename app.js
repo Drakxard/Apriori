@@ -4,7 +4,9 @@
   const Scheduler = window.StudyScheduler;
   const folderStorage = window.AprioriFolderStorage.createFolderStorage();
   const STORAGE_KEY = "study-ticket-queue:v1";
-  const STATE_VERSION = 2;
+  const STATE_VERSION = 3;
+  const MODULE_CATALOG_URL = "https://raw.githubusercontent.com/Drakxard/InSceeen/main/modules/index.json";
+  const MODULE_RAW_BASE_URL = "https://raw.githubusercontent.com/Drakxard/InSceeen/main/";
   const DRAG_THRESHOLD = 64;
   const CLICK_THRESHOLD = 6;
   const HOLD_DELAY = 150;
@@ -40,6 +42,9 @@
     detailForm: document.querySelector("#detailForm"),
     detailId: document.querySelector("#detailId"),
     detailName: document.querySelector("#detailName"),
+    assignedModule: document.querySelector("#assignedModule"),
+    assignedModuleName: document.querySelector("#assignedModuleName"),
+    removeModuleButton: document.querySelector("#removeModuleButton"),
     weightCycleButton: document.querySelector("#weightCycleButton"),
     evaluationList: document.querySelector("#evaluationList"),
     addEvaluationButton: document.querySelector("#addEvaluationButton"),
@@ -54,6 +59,10 @@
     colorHex: document.querySelector("#colorHex"),
     colorInputError: document.querySelector("#colorInputError"),
     detailError: document.querySelector("#detailError"),
+    moduleDialog: document.querySelector("#moduleDialog"),
+    moduleSearch: document.querySelector("#moduleSearch"),
+    moduleResults: document.querySelector("#moduleResults"),
+    moduleError: document.querySelector("#moduleError"),
     settingsDialog: document.querySelector("#settingsDialog"),
     settingsForm: document.querySelector("#settingsForm"),
     cycleSize: document.querySelector("#cycleSize"),
@@ -77,6 +86,8 @@
   let dockDraggedId = null;
   let suppressDockClick = false;
   let dayRefreshTimer = null;
+  let moduleCatalog = null;
+  let moduleSearchSubjectId = null;
 
   bindEvents();
   bootstrapStorage();
@@ -103,7 +114,7 @@
   }
 
   function normalizeState(saved) {
-    if (!saved || ![1, STATE_VERSION].includes(saved.version) || !Array.isArray(saved.subjects)) {
+    if (!saved || ![1, 2, STATE_VERSION].includes(saved.version) || !Array.isArray(saved.subjects)) {
       return emptyState();
     }
 
@@ -230,7 +241,16 @@
       evaluations: normalizeEvaluations(subject.evaluations, subject.examDate),
       createdAt: Number.isNaN(createdAt.getTime()) ? new Date().toISOString() : createdAt.toISOString(),
       color: normalizeColor(subject.color, index),
+      module: normalizeModule(subject.module),
     };
+  }
+
+  function normalizeModule(module) {
+    if (!module || typeof module !== "object") return null;
+    const id = typeof module.id === "string" ? module.id.trim() : "";
+    const nombre = normalizeName(module.nombre);
+    const entry = typeof module.entry === "string" ? module.entry.trim() : "";
+    return id && nombre && entry ? { id, nombre, entry } : null;
   }
 
   function normalizeEvaluations(evaluations, legacyExamDate = null) {
@@ -480,6 +500,7 @@
     elements.detailName.addEventListener("blur", saveSubjectDetails);
     elements.detailName.addEventListener("keydown", handleDetailNameKeydown);
     elements.deleteButton.addEventListener("click", deleteSelectedSubject);
+    elements.removeModuleButton.addEventListener("click", removeAssignedModule);
     elements.weightCycleButton.addEventListener("click", cycleSubjectWeight);
     elements.addEvaluationButton.addEventListener("click", addEvaluation);
     elements.evaluationList.addEventListener("change", saveEvaluations);
@@ -491,6 +512,8 @@
     elements.colorPicker.addEventListener("input", handleColorPickerInput);
     elements.colorHex.addEventListener("change", handleColorHexChange);
     elements.queue.addEventListener("click", handleCardClick);
+    elements.moduleSearch.addEventListener("input", renderModuleResults);
+    elements.moduleResults.addEventListener("click", useModule);
     elements.queue.addEventListener("pointerdown", handlePointerDown);
     elements.queue.addEventListener("pointermove", handlePointerMove);
     elements.queue.addEventListener("pointerup", handlePointerUp);
@@ -511,6 +534,7 @@
 
     elements.addDialog.addEventListener("click", closeOnBackdrop);
     elements.detailDialog.addEventListener("click", closeOnBackdrop);
+    elements.moduleDialog.addEventListener("click", closeOnBackdrop);
     elements.settingsDialog.addEventListener("click", closeOnBackdrop);
     elements.addDialog.addEventListener("close", () => {
       elements.addError.textContent = "";
@@ -519,6 +543,12 @@
     elements.detailDialog.addEventListener("close", () => {
       closeColorPicker();
       elements.detailError.textContent = "";
+    });
+    elements.moduleDialog.addEventListener("close", () => {
+      moduleSearchSubjectId = null;
+      elements.moduleSearch.value = "";
+      elements.moduleResults.replaceChildren();
+      elements.moduleError.textContent = "";
     });
   }
 
@@ -573,6 +603,7 @@
       active: true,
       baseWeight: 1,
       evaluations: [],
+      module: null,
     };
     const priorHead = state.ring[0] || null;
     const extendLeftGroup =
@@ -621,7 +652,110 @@
   function handleCardClick(event) {
     const card = event.target.closest(".queue-card[data-subject-id]");
     if (!card || suppressClick || isAnimating) return;
-    openDetails(card.dataset.subjectId);
+    const subject = subjectById(card.dataset.subjectId);
+    if (!subject) return;
+    if (subject.module) openAssignedModule(subject);
+    else openModuleSearch(subject.id);
+  }
+
+  async function openModuleSearch(subjectId) {
+    if (elements.moduleDialog.open || elements.detailDialog.open) return;
+    moduleSearchSubjectId = subjectId;
+    elements.moduleError.textContent = "";
+    elements.moduleResults.replaceChildren();
+    elements.moduleDialog.showModal();
+    requestAnimationFrame(() => elements.moduleSearch.focus());
+    try {
+      await loadModuleCatalog();
+      renderModuleResults();
+    } catch (error) {
+      elements.moduleError.textContent = error.message || "No se pudo cargar el catálogo de módulos.";
+    }
+  }
+
+  async function loadModuleCatalog() {
+    if (moduleCatalog) return moduleCatalog;
+    const response = await fetch(MODULE_CATALOG_URL);
+    if (!response.ok) throw new Error("No se pudo cargar el catálogo de módulos.");
+    const payload = await response.json();
+    if (!Array.isArray(payload?.modules)) throw new Error("El catálogo de módulos no es válido.");
+    moduleCatalog = payload.modules.map(normalizeModule).filter(Boolean);
+    return moduleCatalog;
+  }
+
+  function renderModuleResults() {
+    elements.moduleResults.replaceChildren();
+    const query = normalizeName(elements.moduleSearch.value).toLocaleLowerCase("es");
+    if (!query || !moduleCatalog) return;
+    const matches = moduleCatalog.filter((module) => module.nombre.toLocaleLowerCase("es").includes(query));
+    for (const module of matches) {
+      const row = document.createElement("div");
+      row.className = "module-result";
+      const name = document.createElement("span");
+      name.textContent = module.nombre;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Usar";
+      button.dataset.moduleId = module.id;
+      row.append(name, button);
+      elements.moduleResults.append(row);
+    }
+  }
+
+  async function useModule(event) {
+    const button = event.target.closest("button[data-module-id]");
+    if (!button || !moduleSearchSubjectId) return;
+    const subject = subjectById(moduleSearchSubjectId);
+    const module = moduleCatalog?.find((item) => item.id === button.dataset.moduleId);
+    if (!subject || !module) return;
+    const row = button.closest(".module-result");
+    button.disabled = true;
+    button.textContent = "...";
+    row?.classList.add("is-downloading");
+    row?.style.setProperty("--download-color", subject.color);
+    elements.moduleError.textContent = "";
+    try {
+      const entry = module.entry.replace(/^\/+/, "");
+      const response = await fetch(new URL(entry, MODULE_RAW_BASE_URL));
+      if (!response.ok) throw new Error("No se pudo descargar el módulo.");
+      const html = await response.text();
+      await folderStorage.saveModule(module.id, html);
+      subject.module = module;
+      await folderStorage.save(state);
+      elements.moduleDialog.close();
+      openAssignedModule(subject);
+    } catch (error) {
+      if (subject.module?.id === module.id) subject.module = null;
+      row?.classList.remove("is-downloading");
+      elements.moduleError.textContent = error.message || "No se pudo descargar el módulo.";
+      button.textContent = "Usar";
+      button.disabled = false;
+    }
+  }
+
+  async function openAssignedModule(subject) {
+    try {
+      const html = await folderStorage.readModule(subject.module.id);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      window.location.assign(URL.createObjectURL(blob));
+    } catch {
+      openModuleSearch(subject.id);
+      elements.moduleError.textContent = "No se encontró la copia descargada. Volvé a elegir el módulo.";
+    }
+  }
+
+  function renderAssignedModule(subject) {
+    const module = subject.module;
+    elements.assignedModule.hidden = !module;
+    elements.assignedModuleName.textContent = module?.nombre || "";
+  }
+
+  function removeAssignedModule() {
+    const subject = subjectById(elements.detailId.value);
+    if (!subject?.module) return;
+    subject.module = null;
+    saveState();
+    renderAssignedModule(subject);
   }
 
   function openDetails(id) {
@@ -629,6 +763,7 @@
     if (!subject || elements.detailDialog.open) return;
     elements.detailId.value = subject.id;
     elements.detailName.value = subject.name;
+    renderAssignedModule(subject);
     renderWeightCycle(subject);
     renderEvaluations(subject);
     elements.detailColor.value = subject.color;
@@ -671,7 +806,7 @@
   }
 
   function renderWeightCycle(subject) {
-    elements.weightCycleButton.textContent = `${Scheduler.acronym(subject.name)} × ${subject.baseWeight}`;
+    elements.weightCycleButton.textContent = `× ${subject.baseWeight}`;
   }
 
   function cycleSubjectWeight() {

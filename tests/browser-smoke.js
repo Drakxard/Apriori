@@ -435,7 +435,8 @@ async function main() {
   await send("Emulation.clearDeviceMetricsOverride");
 
   const detail = await evaluate(`(() => {
-    document.querySelector('.queue-card[data-position="0"]').click();
+    const queueSubjectId = document.querySelector('.queue-card[data-position="0"]').dataset.subjectId;
+    document.querySelector('.subject-dock-card[data-subject-id="' + queueSubjectId + '"]').click();
     const input = document.querySelector('#detailName');
     input.value = 'Estructuras y Organizaciones';
     input.dispatchEvent(new Event('blur'));
@@ -480,7 +481,7 @@ async function main() {
     input.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     const closedOutside = colorPicker.hidden;
     const savedState = JSON.parse(localStorage.getItem('study-ticket-queue:v1'));
-    const saved = savedState.subjects[0];
+    const saved = savedState.subjects.find((subject) => subject.id === queueSubjectId);
     const ringAppearances = savedState.ring.filter((id) => id === saved.id).length;
     const firstIndex = savedState.ring.indexOf(saved.id);
     const laterIndex = savedState.ring.indexOf(saved.id, 1);
